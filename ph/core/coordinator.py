@@ -397,9 +397,9 @@ async def _perform_a_measurement(cont_conn, commands):
     # Tell target to start telling us its background data stats
     target_conn.write_speedtest_start(1)
     # Send each measurement command to the measurers
-    assert len(commands) == 1
+    assert len(commands) == 1, "Can only send one measurement command"
     for command in commands:
-        assert isinstance(command, MeasureCommandBw)
+        assert isinstance(command, MeasureCommandBw), "Msm command must be bw"
         command.duration = int(max(
             TESTING_BW_TEST_DURATION * 1.05, TESTING_BW_TEST_DURATION + 1))
         for m in status.get_status('dict')['used_measurers']:
