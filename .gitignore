@@ -1,0 +1,15 @@
+*.swp
+venv*
+__pycache__
+*.ini
+!deployment*/confs/*.ini
+!localtesting/confs/*.ini
+!labdeployment/confs/*.ini
+!ph/*.default.ini
+*.egg-info
+._*
+.DS_Store
+texput.aux
+texput.log
+*.log
+*.pyc

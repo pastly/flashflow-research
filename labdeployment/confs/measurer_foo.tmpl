@@ -1,0 +1,16 @@
+[measurer]
+coordinator_hostport = koios3:10000
+coordinator_pkey = fopNeXWUGscts0QkO5tic4tc8qyWrfsjfTUlb4rBszU=
+skey_fname = labdeployment/keys/measurer_fooNUM.key
+
+[tor]
+path = /scratch/mtraudt/tor-securebw/src/app/tor
+datadir = /run/tmp/ph-tor-NUM
+extra_lines =
+    LogTimeGranularity 1
+    SafeLogging 0
+    TestingTorNetwork 1
+    # 037-* auths
+    DirAuthority auth1 orport=10102 no-v2 v3ident=FEA7DD37D629E2A36B5865252240DA2B30003D4F 192.168.1.32:10103 4E9C75B12AADDC91138C709781DC412ADAFA290A
+    DirAuthority auth2 orport=10106 no-v2 v3ident=9F1F7A95CB954B65218D29ED5521ECB92C0279ED 192.168.1.32:10107 0D5FEDF45207DFBA1DC5F336BF0F2D75B7A4C8F4
+    DirAuthority auth3 orport=10110 no-v2 v3ident=7C551243CE20F18BBAAFC1931E45B2E2D038E151 192.168.1.32:10111 C199D326A84B8564365BF6A618C19531E459F212
