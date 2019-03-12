@@ -340,9 +340,12 @@ async def _perform_a_measurement(cont_conn, commands):
     state.transition(State.MeasurersConnecting)
     tasks = []
     for m in status.get_status('dict')['measurers']:
+        if len(status.get_status('dict')['used_measurers']) == num_measurers:
+            break
         status.use_conn(m)
         tasks.append(
             asyncio.ensure_future(m.relay_connect_command(connect_command)))
+    assert len(status.get_status('dict')['used_measurers']) == num_measurers
     conns_interested_in_aborts.extend(
         status.get_status('dict')['used_measurers'])
     log.debug(
