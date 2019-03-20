@@ -23,5 +23,5 @@ then
 	exit 1
 fi
 
-sudo sysctl --load $FNAME
+sudo sysctl -p $FNAME
 sudo sysctl -w net.ipv4.route.flush=1
