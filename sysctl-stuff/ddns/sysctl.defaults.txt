@@ -1,0 +1,7 @@
+net.ipv4.tcp_rmem = 4096    87380    6291456
+net.ipv4.tcp_wmem = 4096    16384    4194304
+net.ipv4.tcp_mem = 763281    1017711    1526562
+net.core.rmem_max = 212992
+net.core.wmem_max = 212992
+net.core.rmem_default = 212992
+net.core.wmem_default = 212992
