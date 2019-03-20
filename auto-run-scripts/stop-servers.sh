@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -eu
 
-HOSTNAME=$1
+HOSTNAME_MAIN=$1
+HOSTNAME_EXTRA=$2
 
-echo "Stopping ph echo server"
-ssh $HOSTNAME "pkill python3" || echo "Error stopping ph echo server"
 echo "Stopping iperf server"
-ssh $HOSTNAME "pkill iperf3" || echo "Error stopping iperf server"
+ssh $HOSTNAME_MAIN "pkill iperf3" || echo "Error stopping iperf server"
+
+echo "Stopping nginx server"
+ssh $HOSTNAME_EXTRA "pkill nginx" || echo "Error stopping nginx server"

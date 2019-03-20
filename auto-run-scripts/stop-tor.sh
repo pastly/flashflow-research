@@ -1,11 +1,23 @@
 #!/usr/bin/env bash
 set -eu
 
-HOSTNAME=$1
-TOR_NET_DIR=$2
-#TOR_DIR=/scratch/mtraudt/tor-networks/simple
-ssh $HOSTNAME "
-	cd $TOR_NET_DIR
-	./04-stop-network.sh
-	" || echo "Error stopping tor network"
-echo ''
+HOSTNAME_MAIN=$1
+HOSTNAME_EXTRA=$2
+TOR_NET_DIR=$3
+ssh $HOSTNAME_MAIN "
+	cd $TOR_NET_DIR/tornet/main
+	cat */tor.pid | xargs kill
+	" || echo "Error stopping tor network (main)"
+
+echo 'Done stopping main tor network'
+
+ssh $HOSTNAME_EXTRA "
+	cd $TOR_NET_DIR/tornet/extra
+	cat */tor.pid | xargs kill
+	cd $TOR_NET_DIR/tornet/clients
+	cat */tor.pid | xargs kill
+	" || echo "Error stopping tor network (extra)"
+
+echo 'Done stopping extra and client'
+
+sleep 3
