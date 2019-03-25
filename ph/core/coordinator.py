@@ -20,7 +20,7 @@ import time
 
 log = logging.getLogger(__name__)
 
-TESTING_BW_TEST_DURATION = 5
+TESTING_BW_TEST_DURATION = 120
 
 tor_ctrl = None
 
