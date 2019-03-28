@@ -2,15 +2,17 @@
 set -eu
 
 HOSTNAME=$1
-CODE_DNAME=$2
-NUM_MEASURERS=10
+HOSTNAME_TOR=$2
+RUN_DNAME=$3
+NUM_MEASURERS=1
 
 echo "Starting coordinator"
 ssh $HOSTNAME "
-	cd $CODE_DNAME
-	mkdir -pv /run/tmp/ph-tor-coord
-	cp /run/tmp/relayextra1/cached-* /run/tmp/ph-tor-coord/
-	nohup ~/.pyenv/shims/ph -c labdeployment/confs/coordinator.config.ini coordinator >/tmp/coord.stdout.txt 2>/tmp/coord.stderr.txt </dev/null &
+	cd $RUN_DNAME
+	mkdir -pv ph-tor-coord
+	chmod 700 ph-tor-coord
+	cp -v /mnt/scratch/$HOSTNAME_TOR/mtraudt/run/tornet/main/relay1/cached-* ph-tor-coord/
+	nohup ~/.pyenv/shims/ph -c ph-conf/confs/coordinator.config.ini coordinator >coord.stdout.txt 2>coord.stderr.txt </dev/null &
 	" || echo "Error starting ph coordinator"
 
 sleep 5
@@ -19,12 +21,13 @@ echo "Starting measurers"
 for A in $(seq 1 $NUM_MEASURERS); do
 echo -n "$A "
 ssh $HOSTNAME "
-	cd $CODE_DNAME
-	mkdir -pv /run/tmp/ph-tor-${A}
-	cp /run/tmp/relayextra1/cached-* /run/tmp/ph-tor-${A}/
-	nohup ~/.pyenv/shims/ph -c labdeployment/confs/measurer_foo${A}.conf.ini measurer \
-		>/tmp/measurer_foo${A}.stdout.txt \
-		2>/tmp/measurer_foo${A}.stderr.txt \
+	cd $RUN_DNAME
+	mkdir -pv ph-tor-${A}
+	chmod 700 ph-tor-${A}
+	cp -v /mnt/scratch/$HOSTNAME_TOR/mtraudt/run/tornet/main/relay1/cached-* ph-tor-${A}/
+	nohup ~/.pyenv/shims/ph -c ph-conf/confs/measurer_foo${A}.conf.ini measurer \
+		>measurer_foo${A}.stdout.txt \
+		2>measurer_foo${A}.stderr.txt \
 		</dev/null &
 	" || echo "Error starting ph measurers"
 done
