@@ -86,7 +86,7 @@ class MeasurerConnectionEventHandlers(ConnectionEventHandlers):
         self._recv_connect_to_target_response = asyncio.Event()
         self._connect_to_target_response = None
         self._conn = conn
-        status.add_conn(self)
+        # status.add_conn(self)
 
     def on_connection_lost(self, conn, exc):
         status.del_conn(self)
@@ -97,6 +97,7 @@ class MeasurerConnectionEventHandlers(ConnectionEventHandlers):
             log.info(
                 'Got Identify with message "%s" from %s', ident.message,
                 conn.peer)
+            status.add_conn(self)
         elif state == State.MeasurersConnecting:
             assert isinstance(obj, ConnectToTargetCommand)
             self._connect_to_target_response = obj
@@ -206,7 +207,10 @@ class Status:
         '''
         if type(conn) not in self._conns:
             return
-        self._conns[type(conn)].remove(conn)
+        try:
+            self._conns[type(conn)].remove(conn)
+        except KeyError:
+            pass
 
     def use_conn(self, conn):
         assert isinstance(conn, MeasurerConnectionEventHandlers)
