@@ -9,7 +9,7 @@ ssh $HOSTNAME_MAIN "
 	cd $TOR_NET_DIR/tornet/main
 	nohup ./02-start-network.sh $BW_LIM_BYTES </dev/null &>/dev/null &
 	sleep 5
-	./03-network-in-ready-state.py --debug --size 10 auth1/ relay1/
+	#./03-network-in-ready-state.py --debug --size 10 auth1/ relay1/
 	" || echo "Error starting tor network (main)"
 
 echo 'Done starting main tor network'

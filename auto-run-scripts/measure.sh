@@ -26,7 +26,7 @@ ssh $HOSTNAME "
 	cd $WORK_DIR
 	mkdir -pv $OUT_DIR
 
-	~/.pyenv/shims/ph -c ph-conf/confs/controller.config.ini controller --one -c \"measure $PH_FNAME D3DDCE57861F6D0CD89357AAFFCF9AA65104C80E 1 1\"
+	~/.pyenv/shims/ph -c ph-conf/confs/controller.config.ini controller --one -c \"measure $PH_FNAME 3D197F0006B11811AA8363A17C34182CF11E91A9 1 1\"
 	xz -fzv $PH_FNAME
 	sleep 10
 
