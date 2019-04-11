@@ -50,7 +50,8 @@ def main():
     try:
         loop.run_until_complete(comm['f'](*comm['a'], **comm['kw']))
     except KeyboardInterrupt:
-        print('')
+        # print('')
+        pass
     # finally:
     #     pr.disable()
     #     pr.print_stats('cumulative')
