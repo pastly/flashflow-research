@@ -118,7 +118,7 @@ def launch_tor(conf):
     ctrl_sock = conf.getpath('tor', 'control_socket')
     notice_log = conf.getpath('tor', 'notice_log')
     extra_lines = conf.get('tor', 'extra_lines')
-    tor_path = conf.get('tor', 'path')
+    tor_path = conf.getpath('tor', 'path')
     os.makedirs(datadir, mode=0o700, exist_ok=True)
     torrc.update({
         'DataDirectory': datadir,
