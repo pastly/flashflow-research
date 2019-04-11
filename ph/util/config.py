@@ -4,6 +4,7 @@ from tempfile import NamedTemporaryFile
 import logging
 import logging.config
 import os
+import sys
 
 log = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ def _expand_path(p):
 
 def _read_config_file(conf, fname):
     assert os.path.isfile(fname)
-    print('Reading config file %s' % fname)
+    print('Reading config file %s' % fname, file=sys.stderr)
     log.debug('Reading config file %s', fname)
     with open(fname, 'rt') as fd:
         conf.read_file(fd, source=fname)
