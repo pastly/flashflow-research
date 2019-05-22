@@ -63,8 +63,11 @@ class CoordinatorConnectionEventHandlers(ConnectionEventHandlers):
         log.debug('Got from coord: %s', type(obj).__name__)
         if state == State.Idle:
             global existing_measurement
+            global current_measure_command
             assert isinstance(obj, ConnectToTargetCommand)
             assert existing_measurement is None
+            assert current_measure_command is None
+            current_measure_command = obj
             existing_measurement = asyncio.ensure_future(
                 _perform_a_measurement(coord_conn, obj.target))
             return
@@ -79,7 +82,8 @@ class CoordinatorConnectionEventHandlers(ConnectionEventHandlers):
         elif state == State.WaitingToStart and\
                 isinstance(obj, MeasureCommandBw):
             global current_measure_command
-            assert current_measure_command is None
+            # should be set already from when we were connecting
+            assert current_measure_command is not None
             current_measure_command = obj
             allowed_to_start.set()
         elif state == State.PerformingMeasurement:
@@ -97,9 +101,10 @@ class CoordinatorConnectionEventHandlers(ConnectionEventHandlers):
         need_reconnect_event.set()
 
 
-async def _tell_tor_connect_to_target(target_fp):
+async def _tell_tor_connect_to_target(target_fp, num_conns):
     log.debug('Telling Tor to connect to %s', target_fp[0:8])
-    cmd = 'TESTSPEED %s' % target_fp
+    cmd = 'TESTSPEED %s %d' % (target_fp, num_conns)
+    log.debug('Sending command %s', cmd)
     try:
         resp = tor_ctrl.msg(cmd)
     except Exception:
@@ -149,15 +154,18 @@ async def _perform_a_measurement(coord_conn, target_fp):
     global existing_measurement
     global current_measure_command
     assert state == State.Idle
+    assert current_measure_command
+    command = current_measure_command
     state.transition(State.ConnectingToTarget)
-    circ_id = await _tell_tor_connect_to_target(target_fp)
-    resp = ConnectToTargetCommand(target_fp, success=circ_id is not None)
+    log.debug('%s', type(command))
+    log.debug('%s', command.num_conns)
+    circ_id = await _tell_tor_connect_to_target(target_fp, command.num_conns)
+    resp = ConnectToTargetCommand(target_fp, command.num_conns, success=circ_id is not None)
     coord_conn.write_object(resp)
     state.transition(State.WaitingToStart)
     log.info('Waiting for coordinator to tell us to start ...')
     await allowed_to_start.wait()
     allowed_to_start.clear()
-    assert current_measure_command
     command = current_measure_command
     current_measure_command = None
     log.debug('Starting measurement command %s', type(command).__name__)

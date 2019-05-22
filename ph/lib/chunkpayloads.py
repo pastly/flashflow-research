@@ -14,16 +14,21 @@ class Identify:
 
 
 class ConnectToTargetCommand:
-    def __init__(self, target, success=None):
+    def __init__(self, target, num_conns, success=None):
         assert isinstance(target, str)
         assert len(target) == 40
         assert success is None or isinstance(success, bool)
         self._target = target
+        self._num_conns = num_conns
         self._success = success
 
     @property
     def target(self):
         return self._target
+
+    @property
+    def num_conns(self):
+        return self._num_conns
 
     @property
     def success(self):

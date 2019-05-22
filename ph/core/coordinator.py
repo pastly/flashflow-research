@@ -319,6 +319,7 @@ async def _perform_a_measurement(cont_conn, commands):
     assert len(set(c.num_measurers for c in commands)) == 1
     target_fp = commands[0].target
     num_measurers = commands[0].num_measurers
+    num_conns_per_measurer = commands[0].num_conns_per_measurer
     conns_interested_in_aborts = list(status.get_status('dict')['controllers'])
     # Make sure we have enough measurers
     if len(status.get_status('dict')['measurers']) < num_measurers:
@@ -340,7 +341,7 @@ async def _perform_a_measurement(cont_conn, commands):
     # - Hear back, and they say they did connect
     # - Hear back, and they say they failed to connect
     # - Fail to hear back
-    connect_command = ConnectToTargetCommand(target_fp)
+    connect_command = ConnectToTargetCommand(target_fp, num_conns_per_measurer)
     state.transition(State.MeasurersConnecting)
     tasks = []
     for m in status.get_status('dict')['measurers']:
