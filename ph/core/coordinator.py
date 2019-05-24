@@ -44,6 +44,35 @@ state = StateMachine({
     allow_noop=False
 )
 
+IP_TO_MPC_ID_MAP = {
+    '127.0.0.1': 'local',
+}
+
+
+def ip_to_mpc_id(ip):
+    if ip not in IP_TO_MPC_ID_MAP:
+        return None
+    return IP_TO_MPC_ID_MAP[ip]
+
+
+def split_x_by_y(x, y):
+    ''' Divide X as evenly as possible Y ways using only ints, and return those
+    ints. Consider x=5 and y=3. 5 cannot be divided into 3 pieces evenly using
+    ints. This function would yield a generator producing 1, 2, 2.
+
+    x=8, y=5 yields 1, 2, 1, 2, 2.
+    x=6, y=3 yields 2, 2, 2
+    '''
+    frac_accum = 0
+    for iters_left in range(y-1, 0-1, -1):
+        frac_accum += x % y
+        if frac_accum >= y or not iters_left and frac_accum:
+            yield x // y + 1
+        else:
+            yield x // y
+        if frac_accum >= y:
+            frac_accum -= y
+
 
 class TargetConnectionEventHandlers(ConnectionEventHandlers):
     def __init__(self):
@@ -79,6 +108,10 @@ class MeasurerConnectionEventHandlers(ConnectionEventHandlers):
         return self._conn
 
     @property
+    def mpc_id(self):
+        return ip_to_mpc_id(self.peer[0])
+
+    @property
     def peer(self):
         return self.conn.peer
 
@@ -95,8 +128,8 @@ class MeasurerConnectionEventHandlers(ConnectionEventHandlers):
         if state == State.Idle and isinstance(obj, Identify):
             ident = obj
             log.info(
-                'Got Identify with message "%s" from %s', ident.message,
-                conn.peer)
+                'Got Identify with message "%s" from %s %s', ident.message,
+                self.mpc_id, conn.peer)
             status.add_conn(self)
         elif state == State.MeasurersConnecting:
             assert isinstance(obj, ConnectToTargetCommand)
@@ -310,6 +343,23 @@ def _send_out_aborted_measurement_message(conns, msg=None):
         c.send_aborted_measurement(msg)
 
 
+def _calc_mpc_num_conn_generators(used_mprocs, num_c_per_mpc):
+    used_mpcs = {m.mpc_id for m in used_mprocs}
+    log.debug('%d used mpcs: %s', len(used_mpcs), used_mpcs)
+    d = {}
+    for mpc_id in used_mpcs:
+        num_mprocs_on_mpc = len([1 for m in used_mprocs if m.mpc_id == mpc_id])
+        log.debug(
+            'mpc %s has %d of the %d in-use mprocs', mpc_id, num_mprocs_on_mpc,
+            len(used_mprocs))
+        log.debug(
+            '%s\'s split: %s', mpc_id,
+            ', '.join([str(_) for _ in split_x_by_y(
+                    num_c_per_mpc, num_mprocs_on_mpc)]))
+        d[mpc_id] = split_x_by_y(num_c_per_mpc, num_mprocs_on_mpc)
+    return d
+
+
 async def _perform_a_measurement(cont_conn, commands):
     assert state.current == State.Idle
     for c in commands:
@@ -318,11 +368,15 @@ async def _perform_a_measurement(cont_conn, commands):
     assert len(set(c.target for c in commands)) == 1
     assert len(set(c.num_measurers for c in commands)) == 1
     target_fp = commands[0].target
-    num_measurers = commands[0].num_measurers
-    num_conns_per_measurer = commands[0].num_conns_per_measurer
+    # num_m_procs: the num of ph measurer processes. one ph measurer computer
+    # (m-pc) can have multiple m-procs
+    num_m_procs = commands[0].num_measurers
+    # num_c_per_mpc: num of connections a m-pc should make total spread evenly
+    # across its m-procs
+    num_c_per_mpc = commands[0].num_conns_per_measurer
     conns_interested_in_aborts = list(status.get_status('dict')['controllers'])
-    # Make sure we have enough measurers
-    if len(status.get_status('dict')['measurers']) < num_measurers:
+    # Make sure we have enough m-procs
+    if len(status.get_status('dict')['measurers']) < num_m_procs:
         _send_out_aborted_measurement_message(
             conns_interested_in_aborts, 'Not enough measurers available')
         return
@@ -336,21 +390,29 @@ async def _perform_a_measurement(cont_conn, commands):
             'Coordinator could not connect to target fp %s' % target_fp)
         return
     log.info('Made our connection to target %s', target_conn.peer)
-    # Wait for all measurers to connect
+    state.transition(State.MeasurersConnecting)
+    # Choose the m-procs to use
+    for m in status.get_status('dict')['measurers']:
+        if len(status.get_status('dict')['used_measurers']) == num_m_procs:
+            break
+        log.debug('Using m-proc with peer %s', m.peer)
+        status.use_conn(m)
+    # Determine how we're going to split conns across each m-pc's m-procs
+    mpc_num_conn_generators = _calc_mpc_num_conn_generators(
+        status.get_status('dict')['used_measurers'], num_c_per_mpc)
+    # Wait for all m-procs to connect
     # We will either
     # - Hear back, and they say they did connect
     # - Hear back, and they say they failed to connect
     # - Fail to hear back
-    connect_command = ConnectToTargetCommand(target_fp, num_conns_per_measurer)
-    state.transition(State.MeasurersConnecting)
     tasks = []
-    for m in status.get_status('dict')['measurers']:
-        if len(status.get_status('dict')['used_measurers']) == num_measurers:
-            break
-        status.use_conn(m)
+    for m in status.get_status('dict')['used_measurers']:
+        num_c = next(mpc_num_conn_generators[m.mpc_id])
+        log.debug('Telling %s %s to use %d conns', m.mpc_id, m.peer, num_c)
+        connect_command = ConnectToTargetCommand(target_fp, num_c)
         tasks.append(
             asyncio.ensure_future(m.relay_connect_command(connect_command)))
-    assert len(status.get_status('dict')['used_measurers']) == num_measurers
+    assert len(status.get_status('dict')['used_measurers']) == num_m_procs
     conns_interested_in_aborts.extend(
         status.get_status('dict')['used_measurers'])
     log.debug(

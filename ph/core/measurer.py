@@ -60,10 +60,10 @@ class CoordinatorConnectionEventHandlers(ConnectionEventHandlers):
         state.transition(State.Idle)
 
     def on_data_received(self, coord_conn, obj):
+        global current_measure_command
         log.debug('Got from coord: %s', type(obj).__name__)
         if state == State.Idle:
             global existing_measurement
-            global current_measure_command
             assert isinstance(obj, ConnectToTargetCommand)
             assert existing_measurement is None
             assert current_measure_command is None
@@ -81,7 +81,6 @@ class CoordinatorConnectionEventHandlers(ConnectionEventHandlers):
             state.transition(State.Idle)
         elif state == State.WaitingToStart and\
                 isinstance(obj, MeasureCommandBw):
-            global current_measure_command
             # should be set already from when we were connecting
             assert current_measure_command is not None
             current_measure_command = obj
@@ -157,10 +156,9 @@ async def _perform_a_measurement(coord_conn, target_fp):
     assert current_measure_command
     command = current_measure_command
     state.transition(State.ConnectingToTarget)
-    log.debug('%s', type(command))
-    log.debug('%s', command.num_conns)
     circ_id = await _tell_tor_connect_to_target(target_fp, command.num_conns)
-    resp = ConnectToTargetCommand(target_fp, command.num_conns, success=circ_id is not None)
+    resp = ConnectToTargetCommand(
+        target_fp, command.num_conns, success=circ_id is not None)
     coord_conn.write_object(resp)
     state.transition(State.WaitingToStart)
     log.info('Waiting for coordinator to tell us to start ...')
