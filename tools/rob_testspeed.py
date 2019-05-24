@@ -3,13 +3,10 @@ from stem.control import Controller
 import sys
 import time
 
-CIRCS_PER_CLIENT = 1
-
-
 def usage():
     s = 'Give fingerprint of target, duration in seconds, and one or more '\
         'paths to Tor client control sockets.\n'\
-        '%s TARGET_FP DURATION CLIENT_CTRL_SOCKET ...' % sys.argv[0]
+        '%s TARGET_FP DURATION NUM_CIRCS CLIENT_CTRL_SOCKET ...' % sys.argv[0]
     print(s)
 
 
@@ -20,14 +17,14 @@ def connect(path):
     return c
 
 
-def main(fp, duration, paths):
+def main(fp, duration, num_circs, paths):
     ctrls = [connect(p) for p in paths]
     print('All connected')
     t = duration
     for i, c in enumerate(ctrls):
         statuses = []
-        for _ in range(CIRCS_PER_CLIENT):
-            cmd = 'TESTSPEED %s' % fp
+        for _ in range(1):
+            cmd = 'TESTSPEED %s %d' % (fp, num_circs)
             ret = str(c.msg(cmd))
             assert ret.strip().split()[0] == 'SPEEDTESTING'
             cmd = 'TESTSPEED %d' % duration
@@ -43,16 +40,17 @@ def main(fp, duration, paths):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
+    if len(sys.argv) != 5:
         usage()
         exit(1)
     fp = sys.argv[1]
     duration = int(sys.argv[2])
-    paths = sys.argv[3:]
+    num_circs = int(sys.argv[3])
+    paths = sys.argv[4:]
     if len(fp) != 40:
         print('%s is not a valid relay fingerprint' % fp)
         exit(1)
     if not len(paths):
         print('Must supply 1 or more paths to tor control ports')
         exit(1)
-    exit(main(fp, duration, paths))
+    exit(main(fp, duration, num_circs, paths))
