@@ -412,6 +412,8 @@ async def _perform_a_measurement(cont_conn, commands):
     tasks = []
     for m in status.get_status('dict')['used_measurers']:
         num_c = next(mpc_num_conn_generators[m.mpc_id])
+        if not num_c:
+            continue
         log.debug('Telling %s %s to use %d conns', m.mpc_id, m.peer, num_c)
         connect_command = ConnectToTargetCommand(target_fp, num_c)
         tasks.append(
