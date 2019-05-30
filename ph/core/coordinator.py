@@ -46,6 +46,10 @@ state = StateMachine({
 
 IP_TO_MPC_ID_MAP = {
     '127.0.0.1': 'local',
+    '23.91.124.124': 'nrl',
+    '100.15.234.208': 'ddns',
+    '134.209.148.91': 'india.do',
+    '104.248.93.55': 'amst.do',
 }
 
 
