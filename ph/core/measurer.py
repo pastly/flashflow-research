@@ -197,12 +197,13 @@ def gen_parser(sub):
     p = sub.add_parser(
         'measurer', formatter_class=ArgumentDefaultsHelpFormatter,
         description=d)
+    p.add_argument('--tor-bw-lim', default=125000000, type=int)
     p
 
 
 async def main(args, conf):
     global tor_ctrl
-    tor_ctrl = launch_tor(conf)
+    tor_ctrl = launch_tor(conf, bw_lim=args.tor_bw_lim)
 
     coordinator_pkey = PublicKey(bytes(base64.b64decode(
         conf['measurer']['coordinator_pkey'])))

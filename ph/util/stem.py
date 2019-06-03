@@ -111,7 +111,7 @@ def _parse_user_torrc_config(torrc, torrc_text):
     return torrc_dict
 
 
-def launch_tor(conf):
+def launch_tor(conf, bw_lim=125000000):
     torrc = copy.deepcopy(TORRC_STARTING_POINT)
     datadir = conf.getpath('tor', 'datadir')
     pidfile = conf.getpath('tor', 'pidfile')
@@ -127,7 +127,10 @@ def launch_tor(conf):
         'Log': [
             'NOTICE file %s' % notice_log,
         ],
+        'BandwidthRate': str(bw_lim),
+        'BandwidthBurst': str(bw_lim),
     })
+    log.debug('Launching Tor with BR %s and BB %s', bw_lim, bw_lim)
     torrc = _parse_user_torrc_config(torrc, extra_lines)
     try:
         stem.process.launch_tor_with_config(
