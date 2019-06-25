@@ -45,14 +45,14 @@ class Aborted:
 
 class MeasureCommand:
     def __init__(self, target, repeat, num_measurers=None,
-                 num_conns_per_measurer=None):
+                 num_conns_overall=None):
         assert isinstance(target, str)
         assert len(target) == 40
         assert isinstance(repeat, int)
         self._target = target
         self._repeat = repeat
         self._num_measurers = num_measurers
-        self._num_conns_per_measurer = num_conns_per_measurer
+        self._num_conns_overall = num_conns_overall
 
     @property
     def target(self):
@@ -67,8 +67,8 @@ class MeasureCommand:
         return self._num_measurers
 
     @property
-    def num_conns_per_measurer(self):
-        return self._num_conns_per_measurer
+    def num_conns_overall(self):
+        return self._num_conns_overall
 
 
 class MeasureCommandStop(MeasureCommand):

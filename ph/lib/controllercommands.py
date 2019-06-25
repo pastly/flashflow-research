@@ -61,7 +61,7 @@ class ControllerCommandMeasure(ControllerCommand):
         self._name = args[0]
         target_fp = args[1]
         num_measurers = int(args[2])
-        num_conns_per_measurer = int(args[3])
+        num_conns_overall = int(args[3])
         repeat = 1
         pause_start = 0.100
         duration = None
@@ -69,7 +69,7 @@ class ControllerCommandMeasure(ControllerCommand):
         self._measure_commands = [
             MeasureCommandBw(
                 pause_start, duration, pause, target_fp, repeat,
-                num_measurers, num_conns_per_measurer)]
+                num_measurers, num_conns_overall)]
 
     @property
     def measure_commands(self):
@@ -81,7 +81,7 @@ class ControllerCommandMeasure(ControllerCommand):
 
     def get_help_string(self):
         return 'measure <filename> <target_fp> <num_measurers> '\
-            '<num_conns_per_measurer>'
+            '<num_conns_overall>'
 
 
 class ControllerCommandQuit(ControllerCommand):

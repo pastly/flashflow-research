@@ -52,11 +52,24 @@ IP_TO_MPC_ID_MAP = {
     '104.248.93.55': 'amst.do',
 }
 
+UDP_BOMB_BW = {
+    'nrl': 946.44,
+    'ddns':  941.81,
+    'india.do': 1076.27,
+    'amst.do': 1611.19,
+}
+
 
 def ip_to_mpc_id(ip):
     if ip not in IP_TO_MPC_ID_MAP:
         return None
     return IP_TO_MPC_ID_MAP[ip]
+
+
+def mpc_id_to_udp_bomb_bw(mpc_id):
+    if mpc_id not in UDP_BOMB_BW:
+        return None
+    return UDP_BOMB_BW[mpc_id]
 
 
 def split_x_by_y(x, y):
@@ -346,12 +359,15 @@ def _send_out_aborted_measurement_message(conns, msg=None):
         assert isinstance(c, ConnectionEventHandlers)
         c.send_aborted_measurement(msg)
 
-
-def _calc_mpc_num_conn_generators(used_mprocs, num_c_per_mpc):
+def _calc_mpc_num_conn_generators(used_mprocs, num_conns_overall):
     used_mpcs = {m.mpc_id for m in used_mprocs}
+    total_udp_bomb_bw = sum(mpc_id_to_udp_bomb_bw(mpc_id) for mpc_id in used_mpcs)
     log.debug('%d used mpcs: %s', len(used_mpcs), used_mpcs)
+    log.debug('%s have a combined udp bomb bw of %f', used_mpcs, total_udp_bomb_bw)
     d = {}
     for mpc_id in used_mpcs:
+        mpc_udp_bomb_bw = mpc_id_to_udp_bomb_bw(mpc_id)
+        num_conns_this_mpc = round(mpc_udp_bomb_bw * num_conns_overall / total_udp_bomb_bw)
         num_mprocs_on_mpc = len([1 for m in used_mprocs if m.mpc_id == mpc_id])
         log.debug(
             'mpc %s has %d of the %d in-use mprocs', mpc_id, num_mprocs_on_mpc,
@@ -359,8 +375,8 @@ def _calc_mpc_num_conn_generators(used_mprocs, num_c_per_mpc):
         log.debug(
             '%s\'s split: %s', mpc_id,
             ', '.join([str(_) for _ in split_x_by_y(
-                    num_c_per_mpc, num_mprocs_on_mpc)]))
-        d[mpc_id] = split_x_by_y(num_c_per_mpc, num_mprocs_on_mpc)
+                    num_conns_this_mpc, num_mprocs_on_mpc)]))
+        d[mpc_id] = split_x_by_y(num_conns_this_mpc, num_mprocs_on_mpc)
     return d
 
 
@@ -375,9 +391,9 @@ async def _perform_a_measurement(cont_conn, commands):
     # num_m_procs: the num of ph measurer processes. one ph measurer computer
     # (m-pc) can have multiple m-procs
     num_m_procs = commands[0].num_measurers
-    # num_c_per_mpc: num of connections a m-pc should make total spread evenly
-    # across its m-procs
-    num_c_per_mpc = commands[0].num_conns_per_measurer
+    # num_conns_overall: num of connections total across all m-pc's that should
+    # be made
+    num_conns_overall = commands[0].num_conns_overall
     conns_interested_in_aborts = list(status.get_status('dict')['controllers'])
     # Make sure we have enough m-procs
     if len(status.get_status('dict')['measurers']) < num_m_procs:
@@ -403,7 +419,7 @@ async def _perform_a_measurement(cont_conn, commands):
         status.use_conn(m)
     # Determine how we're going to split conns across each m-pc's m-procs
     mpc_num_conn_generators = _calc_mpc_num_conn_generators(
-        status.get_status('dict')['used_measurers'], num_c_per_mpc)
+        status.get_status('dict')['used_measurers'], num_conns_overall)
     # Wait for all m-procs to connect
     # We will either
     # - Hear back, and they say they did connect
