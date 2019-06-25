@@ -440,7 +440,7 @@ async def _perform_a_measurement(cont_conn, commands):
     log.debug(
         'Waiting for all measurers to report they\'ve connected to target ...')
     done_tasks, pending_tasks = await asyncio.wait(
-        tasks, timeout=10, return_when=asyncio.FIRST_EXCEPTION)
+        tasks, timeout=30, return_when=asyncio.FIRST_EXCEPTION)
     log.debug(
         '%d measurers are done connecting and haven\'t heard from %d',
         len(done_tasks), len(pending_tasks))
