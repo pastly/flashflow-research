@@ -52,6 +52,13 @@ IP_TO_MPC_ID_MAP = {
     '104.248.93.55': 'amst.do',
 }
 
+TCP_BOMB_BW = {
+    'nrl': 563.09,
+    'ddns':  713.48,
+    'india.do': 1283.87,
+    'amst.do': 1170.49,
+}
+
 UDP_BOMB_BW = {
     'nrl': 946.44,
     'ddns':  941.81,
@@ -64,6 +71,12 @@ def ip_to_mpc_id(ip):
     if ip not in IP_TO_MPC_ID_MAP:
         return None
     return IP_TO_MPC_ID_MAP[ip]
+
+
+def mpc_id_to_tcp_bomb_bw(mpc_id):
+    if mpc_id not in TCP_BOMB_BW:
+        return None
+    return TCP_BOMB_BW[mpc_id]
 
 
 def mpc_id_to_udp_bomb_bw(mpc_id):
@@ -361,12 +374,12 @@ def _send_out_aborted_measurement_message(conns, msg=None):
 
 def _calc_mpc_num_conn_generators(used_mprocs, num_conns_overall):
     used_mpcs = {m.mpc_id for m in used_mprocs}
-    total_udp_bomb_bw = sum(mpc_id_to_udp_bomb_bw(mpc_id) for mpc_id in used_mpcs)
+    total_udp_bomb_bw = sum(mpc_id_to_tcp_bomb_bw(mpc_id) for mpc_id in used_mpcs)
     log.debug('%d used mpcs: %s', len(used_mpcs), used_mpcs)
     log.debug('%s have a combined udp bomb bw of %f', used_mpcs, total_udp_bomb_bw)
     d = {}
     for mpc_id in used_mpcs:
-        mpc_udp_bomb_bw = mpc_id_to_udp_bomb_bw(mpc_id)
+        mpc_udp_bomb_bw = mpc_id_to_tcp_bomb_bw(mpc_id)
         num_conns_this_mpc = round(mpc_udp_bomb_bw * num_conns_overall / total_udp_bomb_bw)
         num_mprocs_on_mpc = len([1 for m in used_mprocs if m.mpc_id == mpc_id])
         log.debug(
