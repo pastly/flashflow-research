@@ -373,23 +373,22 @@ def _send_out_aborted_measurement_message(conns, msg=None):
         c.send_aborted_measurement(msg)
 
 def _calc_mpc_num_conn_generators(used_mprocs, num_conns_overall):
+    # splits num_conns_overall evenly across mpcs, and evenly across each mpc's
+    # mprocs
     used_mpcs = {m.mpc_id for m in used_mprocs}
-    total_udp_bomb_bw = sum(mpc_id_to_tcp_bomb_bw(mpc_id) for mpc_id in used_mpcs)
     log.debug('%d used mpcs: %s', len(used_mpcs), used_mpcs)
-    log.debug('%s have a combined udp bomb bw of %f', used_mpcs, total_udp_bomb_bw)
+    num_conns_per_mpc_gen = split_x_by_y(num_conns_overall, len(used_mpcs))
     d = {}
     for mpc_id in used_mpcs:
-        mpc_udp_bomb_bw = mpc_id_to_tcp_bomb_bw(mpc_id)
-        num_conns_this_mpc = round(mpc_udp_bomb_bw * num_conns_overall / total_udp_bomb_bw)
-        num_mprocs_on_mpc = len([1 for m in used_mprocs if m.mpc_id == mpc_id])
+        num_conns_this_mpc = next(num_conns_per_mpc_gen)
+        num_mprocs_on_this_mpc = len([1 for m in used_mprocs if m.mpc_id == mpc_id])
         log.debug(
-            'mpc %s has %d of the %d in-use mprocs', mpc_id, num_mprocs_on_mpc,
-            len(used_mprocs))
-        log.debug(
-            '%s\'s split: %s', mpc_id,
-            ', '.join([str(_) for _ in split_x_by_y(
-                    num_conns_this_mpc, num_mprocs_on_mpc)]))
-        d[mpc_id] = split_x_by_y(num_conns_this_mpc, num_mprocs_on_mpc)
+            'mpc %s has %d of the %d in-use mprocs',
+            mpc_id, num_mprocs_on_this_mpc, len(used_mprocs))
+        split_str = ', '.join([str(_) for _ in split_x_by_y(
+            num_conns_this_mpc, num_mprocs_on_this_mpc)])
+        log.debug('%s\'s split: %s', mpc_id, split_str)
+        d[mpc_id] = split_x_by_y(num_conns_this_mpc, num_mprocs_on_this_mpc)
     return d
 
 
