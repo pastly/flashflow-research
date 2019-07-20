@@ -124,35 +124,34 @@ start_measurement(int s, unsigned dur) {
 }
 
 int
-read_response(int s) {
-	char buf[READ_BUF_LEN];
-	struct timeval t;
-	if (gettimeofday(&t, NULL) < 0) {
-		perror("Error getting the time");
-		return 0;
-	}
+read_response(int s, char *buf, size_t max_len, struct timeval *t) {
 	int len;
-	if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
+	if ((len = recv(s, buf, max_len, 0)) < 0) {
 		perror("Error reading responses");
 		return 0;
 	}
 	if (!len) {
 		return 0;
 	}
+	if (gettimeofday(t, NULL) < 0) {
+		perror("Error getting the time");
+		return 0;
+	}
 	buf[len] = '\0';
-	printf("%ld.%06d %s", t.tv_sec, t.tv_usec, buf);
 	return 1;
 }
 
 int
 main(int argc, char *argv[]) {
+	int ctrl_sock;
 	int ret = 0;
+	char resp_buf[READ_BUF_LEN];
+	struct timeval resp_time;
 	if (argc != 4) {
 		usage();
 		ret = -1;
 		goto end;
 	}
-	int ctrl_sock;
 	char *fp = argv[1];
 	unsigned num_conns = atoi(argv[2]);
 	unsigned dur = atoi(argv[3]);
@@ -172,7 +171,8 @@ main(int argc, char *argv[]) {
 		ret = -1;
 		goto cleanup;
 	}
-	while (read_response(ctrl_sock)) {
+	while (read_response(ctrl_sock, resp_buf, READ_BUF_LEN, &resp_time)) {
+		printf("%ld.%06d %s", resp_time.tv_sec, resp_time.tv_usec, resp_buf);
 	}
 cleanup:
 	close(ctrl_sock);
