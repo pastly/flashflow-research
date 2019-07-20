@@ -9,6 +9,13 @@
 
 #define READ_BUF_LEN 1024*8
 
+void
+usage() {
+	const char *s = \
+	"arguments: fingerprint num_socks duration\n";
+	fprintf(stderr, "%s", s);
+}
+
 /*
  * build a socket to tor's control port at the given host and port
  * returns -1 if error, otherwise socket
@@ -135,13 +142,6 @@ read_response(int s) {
 	buf[len] = '\0';
 	printf("%ld.%06d %s", t.tv_sec, t.tv_usec, buf);
 	return 1;
-}
-
-void
-usage() {
-	const char *s = \
-	"arguments: fingerprint num_socks duration\n";
-	fprintf(stderr, "%s", s);
 }
 
 int
