@@ -129,6 +129,10 @@ start_measurement(const int s, const unsigned dur) {
 	return 1;
 }
 
+/* read at most max_len bytes from socket s into buf, and store the time this
+ * is done in t. writes a \0 at the end of the read bytes. returns false if
+ * error or no bytes read, otherwise true.
+ */
 int
 read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
 	int len;
