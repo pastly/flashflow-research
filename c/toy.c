@@ -261,7 +261,8 @@ main(const int argc, const char *argv[]) {
 	// stores the return value from select()
 	int select_result = 0;
 	// tells select() how long to wait before timing out
-	struct timeval select_timeout;
+	const struct timeval select_timeout = { .tv_sec = 3, .tv_usec = 0 };
+	struct timeval select_timeout_remaining;
 	// the return value of this func
 	int ret = 0;
 	// loop iter counter
@@ -345,9 +346,8 @@ main(const int argc, const char *argv[]) {
 			for (i = 0; i < num_ctrl_socks; i++) {
 				FD_SET(ctrl_socks[i], &read_set);
 			}
-			select_timeout.tv_sec = 3;
-			select_timeout.tv_usec = 0;
-			select_result = select(max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout);
+			select_timeout_remaining = select_timeout;
+			select_result = select(max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout_remaining);
 			if (select_result < 0) {
 				perror("Error on select()");
 				ret = -1;
