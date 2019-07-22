@@ -2,10 +2,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#include <sys/select.h>
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #define READ_BUF_LEN 1024*8
 #define MAX_NUM_CTRL_SOCKS 64
@@ -24,7 +26,7 @@ usage() {
  * returns -1 if error, otherwise socket
  */
 int
-get_ctrl_sock(char *host, char *port) {
+get_ctrl_sock(const char *host, const char *port) {
 	int s;
 	struct addrinfo hints, *addr;
 	s = socket(PF_INET, SOCK_STREAM, 0);
@@ -40,6 +42,7 @@ get_ctrl_sock(char *host, char *port) {
 		return -1;
 	}
 	if (connect(s, addr->ai_addr, addr->ai_addrlen) != 0) {
+		fprintf(stderr, "Could not connect to %s:%s ... ", host, port);
 		perror("Error connect() control socket");
 		return -1;
 	}
@@ -53,7 +56,7 @@ get_ctrl_sock(char *host, char *port) {
  * returns false if error, otherwise true
  */
 int
-auth_ctrl_sock(int s) {
+auth_ctrl_sock(const int s) {
 	char buf[READ_BUF_LEN];
 	int len;
 	const char *msg = "AUTHENTICATE\n";
@@ -81,7 +84,7 @@ auth_ctrl_sock(int s) {
  * returns false if error, otherwise true
  */
 int
-connect_target(int s, char *fp, unsigned num_conns) {
+connect_target(const int s, const  char *fp, const unsigned num_conns) {
 	char buf[READ_BUF_LEN];
 	const char *good_resp = "250 SPEEDTESTING";
 	const int buf_size = 1024;
@@ -112,7 +115,7 @@ connect_target(int s, char *fp, unsigned num_conns) {
  * returns false if error, otherwise true
  */
 int
-start_measurement(int s, unsigned dur) {
+start_measurement(const int s, const unsigned dur) {
 	const int buf_size = 1024;
 	char msg[buf_size];
 	if (snprintf(msg, buf_size, "TESTSPEED %d\n", dur) < 0) {
@@ -127,7 +130,7 @@ start_measurement(int s, unsigned dur) {
 }
 
 int
-read_response(int s, char *buf, size_t max_len, struct timeval *t) {
+read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
 	int len;
 	if ((len = recv(s, buf, max_len, 0)) < 0) {
 		perror("Error reading responses");
@@ -156,16 +159,17 @@ read_response(int s, char *buf, size_t max_len, struct timeval *t) {
  * ctrl_socks with the good socks, and return early.
  */
 int
-get_ctrl_socks(unsigned num_hostports, char *hostports[], int ctrl_socks[]) {
+get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_socks[]) {
 	for (int i = 0; i < num_hostports; i++) {
 		int host_idx = i * 2;
 		int port_idx = host_idx + 1;
 		int ctrl_sock;
-		char *host = hostports[host_idx];
-		char *port = hostports[port_idx];
+		const char *host = hostports[host_idx];
+		const char *port = hostports[port_idx];
 		if ((ctrl_sock = get_ctrl_sock(host, port)) < 0) {
 			return i;
 		}
+		fprintf(stderr, "connected to %s:%s\n", host, port);
 		ctrl_socks[i] = ctrl_sock;
 	}
 	return num_hostports;
@@ -176,7 +180,7 @@ get_ctrl_socks(unsigned num_hostports, char *hostports[], int ctrl_socks[]) {
  * returns false if we fail to auth to any tor, otherwise true.
  */
 int
-auth_ctrl_socks(int num_ctrl_socks, int ctrl_socks[]) {
+auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[]) {
 	for (int i = 0; i < num_ctrl_socks; i++) {
 		if (!auth_ctrl_sock(ctrl_socks[i])) {
 			return 0;
@@ -192,7 +196,7 @@ auth_ctrl_socks(int num_ctrl_socks, int ctrl_socks[]) {
  * false if any failure, otherwise true.
  */
 int
-connect_target_all(int num_ctrl_socks, int ctrl_socks[], char *fp, unsigned num_conns_each) {
+connect_target_all(const int num_ctrl_socks, const int ctrl_socks[], const char *fp, const unsigned num_conns_each) {
 	for (int i = 0; i < num_ctrl_socks; i++) {
 		if (!connect_target(ctrl_socks[i], fp, num_conns_each)) {
 			return 0;
@@ -207,7 +211,7 @@ connect_target_all(int num_ctrl_socks, int ctrl_socks[], char *fp, unsigned num_
  * false if any falure, otherwise true
  */
 int
-start_measurements(int num_ctrl_socks, int ctrl_socks[], unsigned duration) {
+start_measurements(const int num_ctrl_socks, const int ctrl_socks[], const unsigned duration) {
 	for (int i = 0; i < num_ctrl_socks; i++) {
 		if (!(start_measurement(ctrl_socks[i], duration))) {
 			return 0;
@@ -217,11 +221,26 @@ start_measurements(int num_ctrl_socks, int ctrl_socks[], unsigned duration) {
 }
 
 int
-main(int argc, char *argv[]) {
+max(const int array[], const int array_len) {
+	int the_max = INT_MIN;
+	for (int i = 0; i < array_len; i++) {
+		the_max = array[i] > the_max ? array[i] : the_max;
+	}
+	return the_max;
+}
+
+int
+main(const int argc, const char *argv[]) {
 	// all the socks we have to tor client ctrl ports
 	int ctrl_socks[MAX_NUM_CTRL_SOCKS];
+	// to tell select() all the sockets we care about reading from
+	fd_set read_set;
 	// the number of ctrl socks we make successfully
 	int num_ctrl_socks = 0;
+	// stores the return value from select()
+	int select_result = 0;
+	// tells select() how long to wait before timing out
+	struct timeval select_timeout;
 	// the return value of this func
 	int ret = 0;
 	// buffer to store responses from tor clients
@@ -229,16 +248,11 @@ main(int argc, char *argv[]) {
 	// used repeatedly to store the current time for printing
 	struct timeval resp_time;
 	// relay fingerprint to measure
-	char *fp = argv[1];
+	const char *fp = argv[1];
 	// numer of host+port pairs that are specified on the cmd line
 	unsigned num_hostports = atoi(argv[2]);
 	if (argc != 3 + num_hostports * 2 + 2) {
 		usage();
-		ret = -1;
-		goto end;
-	}
-	if (num_hostports != 1) {
-		fprintf(stderr, "Support for anything other than 1 tor client hasn't been added yet.\n");
 		ret = -1;
 		goto end;
 	}
@@ -256,6 +270,8 @@ main(int argc, char *argv[]) {
 		ret = -1;
 		goto cleanup;
 	}
+	// to tell select() the max fd we care about
+	const int max_ctrl_sock = max(ctrl_socks, num_ctrl_socks);
 	if (!auth_ctrl_socks(num_ctrl_socks, ctrl_socks)) {
 		ret = -1;
 		goto cleanup;
@@ -269,12 +285,39 @@ main(int argc, char *argv[]) {
 		ret = -1;
 		goto cleanup;
 	}
-	while (read_response(ctrl_socks[0], resp_buf, READ_BUF_LEN, &resp_time)) {
-		printf("%ld.%06d %s", resp_time.tv_sec, resp_time.tv_usec, resp_buf);
+
+	while (1) {
+		FD_ZERO(&read_set);
+		for (int i = 0; i < num_ctrl_socks; i++) {
+			FD_SET(ctrl_socks[i], &read_set);
+		}
+		select_timeout.tv_sec = 3;
+		select_timeout.tv_usec = 0;
+		select_result = select(max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout);
+		if (select_result < 0) {
+			perror("Error on select()");
+			ret = -1;
+			goto cleanup;
+		} else if (select_result == 0) {
+			fprintf(stderr, "%ld.%06d sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+			//ret = -1;
+			goto cleanup;
+		}
+		for (int i = 0; i< num_ctrl_socks; i++) {
+			if (FD_ISSET(ctrl_socks[i], &read_set)) {
+				if (!read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time)) {
+					fprintf(stderr, "select() said there was something to read on %d, but read zero bytes or had error.\n", ctrl_socks[i]);
+					ret = -1;
+					goto cleanup;
+				}
+				printf("%ld.%06d %s", resp_time.tv_sec, resp_time.tv_usec, resp_buf);
+			}
+		}
 	}
+
 cleanup:
 	for (int i = 0; i < num_ctrl_socks; i++) {
-		printf("Closing sock=%d\n", ctrl_socks[i]);
+		fprintf(stderr, "Closing sock=%d\n", ctrl_socks[i]);
 		close(ctrl_socks[i]);
 	}
 end:
