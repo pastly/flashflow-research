@@ -323,7 +323,7 @@ main(const int argc, const char *argv[]) {
 		// ignore lines that probably aren't fingerprints
 		if ((fp_file_line[fp_file_bytes_read-1] == '\n' && fp_file_bytes_read != 41) ||
 				(fp_file_line[fp_file_bytes_read-1] != '\n' && fp_file_bytes_read == 40)) {
-			LOG("Ignoring line that doesn't look like fingerprint: \"%s\"", fp_file_line);
+			LOG("Ignoring line that doesn't look like fingerprint: \"%s\"\n", fp_file_line);
 			continue;
 		}
 		// replace newline with null
