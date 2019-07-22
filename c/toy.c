@@ -359,8 +359,7 @@ main(const int argc, const char *argv[]) {
 				goto cleanup;
 			} else if (select_result == 0) {
 				LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
-				//ret = -1;
-				goto cleanup;
+				goto end_of_single_fp_loop;
 			}
 			for (i = 0; i< num_ctrl_socks; i++) {
 				if (FD_ISSET(ctrl_socks[i], &read_set)) {
