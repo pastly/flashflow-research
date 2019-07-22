@@ -271,7 +271,7 @@ main(const int argc, const char *argv[]) {
 	// the return value of this func
 	int ret = 0;
 	// loop iter counter
-	int i;
+	int i, j;
 	// buffer to store responses from tor clients
 	char resp_buf[READ_BUF_LEN];
 	// stores number of bytes read from read_response()
@@ -373,8 +373,11 @@ main(const int argc, const char *argv[]) {
 						LOG("read 0 bytes when select() said there was something to read on %d\n", ctrl_socks[i]);
 						goto end_of_single_fp_loop;
 					}
-					resp_buf[bytes_read_this_time+1] = '\0';
-					printf(TS_FMT " %s %d %s", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
+					resp_buf[bytes_read_this_time] = '\0';
+					for (j = bytes_read_this_time-1; resp_buf[j] == '\r' || resp_buf[j] == '\n'; j--) {
+						resp_buf[j] = '\0';
+					}
+					printf(TS_FMT " %s %d %s\n", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
 				}
 			}
 		}
