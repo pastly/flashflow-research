@@ -130,25 +130,25 @@ start_measurement(const int s, const unsigned dur) {
 }
 
 /* read at most max_len bytes from socket s into buf, and store the time this
- * is done in t. writes a \0 at the end of the read bytes. returns false if
- * error or no bytes read, otherwise true.
+ * is done in t. returns negative value if error, returns 0 if no bytes read,
+ * otherwise returns number of bytes read.
  */
 int
 read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
 	int len;
 	if ((len = recv(s, buf, max_len, 0)) < 0) {
 		perror("Error reading responses");
-		return 0;
+		return -1;
 	}
 	if (!len) {
 		return 0;
 	}
 	if (gettimeofday(t, NULL) < 0) {
 		perror("Error getting the time");
-		return 0;
+		return -1;
 	}
-	buf[len] = '\0';
-	return 1;
+	//buf[len] = '\0';
+	return len;
 }
 
 /*
@@ -249,6 +249,8 @@ main(const int argc, const char *argv[]) {
 	int ret = 0;
 	// buffer to store responses from tor clients
 	char resp_buf[READ_BUF_LEN];
+	// stores number of bytes read from read_response()
+	int bytes_read_this_time;
 	// used repeatedly to store the current time for printing
 	struct timeval resp_time;
 	// relay fingerprint to measure
@@ -309,11 +311,12 @@ main(const int argc, const char *argv[]) {
 		}
 		for (int i = 0; i< num_ctrl_socks; i++) {
 			if (FD_ISSET(ctrl_socks[i], &read_set)) {
-				if (!read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time)) {
+				if ((bytes_read_this_time = read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time)) <= 0) {
 					fprintf(stderr, "select() said there was something to read on %d, but read zero bytes or had error.\n", ctrl_socks[i]);
 					ret = -1;
 					goto cleanup;
 				}
+				resp_buf[bytes_read_this_time+1] = '\0';
 				printf("%ld.%06d %s", resp_time.tv_sec, resp_time.tv_usec, resp_buf);
 			}
 		}
