@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 import socket
 import time
+import sys
 
 HOST = ''
-PORT = 2121
+PORT = int(sys.argv[1])
 
 
 def line_iter(conn):
