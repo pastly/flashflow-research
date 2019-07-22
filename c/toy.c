@@ -15,9 +15,8 @@
 void
 usage() {
 	const char *s = \
-	"arguments: <fingerprint> <num_hostport_pairs> "
-	"[host port [host port ...]] "
-	"<num_socks_per_host> <duration>\n";
+	"arguments: <fingerprint> <num_socks_per_host> <duration> "
+	"<host> <port> [host port [host port ...]]\n";
 	fprintf(stderr, "%s", s);
 }
 
@@ -255,23 +254,25 @@ main(const int argc, const char *argv[]) {
 	struct timeval resp_time;
 	// relay fingerprint to measure
 	const char *fp = argv[1];
-	// numer of host+port pairs that are specified on the cmd line
-	unsigned num_hostports = atoi(argv[2]);
-	if (argc != 3 + num_hostports * 2 + 2) {
+	// number of socks each tor client should open to the target
+	const unsigned num_conns = atoi(argv[2]);
+	// how long the clients should measure for, in seconds
+	const unsigned dur = atoi(argv[3]);
+	// first host/port arg, all following args are also host/port
+	const char **hostport_argv = &argv[4];
+	if (argc < 6 || argc % 2 != 0) {
 		usage();
 		ret = -1;
 		goto end;
 	}
+	// numer of host+port pairs that are specified on the cmd line
+	unsigned num_hostports = (argc - 4) / 2;
 	if (num_hostports > MAX_NUM_CTRL_SOCKS) {
 		fprintf(stderr, "%u is too many tor clients, sorry.\n", num_hostports);
 		ret = -1;
 		goto end;
 	}
-	// number of socks each tor client should open to the target
-	unsigned num_conns = atoi(argv[3+num_hostports*2]);
-	// how long the clients should measure for, in seconds
-	unsigned dur = atoi(argv[3+num_hostports*2+1]);
-	if ((num_ctrl_socks = get_ctrl_socks(num_hostports, &argv[3], ctrl_socks)) != num_hostports) {
+	if ((num_ctrl_socks = get_ctrl_socks(num_hostports, hostport_argv, ctrl_socks)) != num_hostports) {
 		fprintf(stderr, "Unable to open all sockets\n");
 		ret = -1;
 		goto cleanup;
