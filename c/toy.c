@@ -12,12 +12,24 @@
 #define READ_BUF_LEN 1024*8
 #define MAX_NUM_CTRL_SOCKS 64
 
+#define LOG(fmt, ...) \
+	do { \
+		struct timeval t; \
+		gettimeofday(&t, NULL); \
+		fprintf(stderr, "[%ld.%06d] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
+	} while (0);
+
 void
 usage() {
 	const char *s = \
-	"arguments: <fingerprint> <num_socks_per_host> <duration> "
-	"<host> <port> [host port [host port ...]]\n";
-	fprintf(stderr, "%s", s);
+	"arguments: <fingerprint_file> <num_socks_per_host> <duration> "
+	"<host> <port> [host port [host port ...]]\n"
+	"\n"
+	"fingerprint_file    place from which to read fingerprints to measure, one per line\n"
+	"num_socks_per_host  how many sockets each tor client should open to the target relay\n"
+	"duration            duration of each measurement\n"
+	"host port           hostname and port of a tor client. specify this 1 or more times\n";
+	LOG("%s", s);
 }
 
 /*
@@ -41,7 +53,7 @@ get_ctrl_sock(const char *host, const char *port) {
 		return -1;
 	}
 	if (connect(s, addr->ai_addr, addr->ai_addrlen) != 0) {
-		fprintf(stderr, "Could not connect to %s:%s ... ", host, port);
+		LOG("Could not connect to %s:%s ... ", host, port);
 		perror("Error connect() control socket");
 		return -1;
 	}
@@ -70,7 +82,7 @@ auth_ctrl_sock(const int s) {
 	}
 	if (strncmp(buf, good_resp, strlen(good_resp))) {
 		buf[len] = '\0';
-		fprintf(stderr, "Unknown auth response: %s\n", buf);
+		LOG("Unknown auth response: %s\n", buf);
 		return 0;
 	}
 	//printf("Auth response: %d %s\n", len, buf);
@@ -90,7 +102,7 @@ connect_target(const int s, const  char *fp, const unsigned num_conns) {
 	char msg[buf_size];
 	int len;
 	if (snprintf(msg, buf_size, "TESTSPEED %s %d\n", fp, num_conns) < 0) {
-		fprintf(stderr, "Error making msg in connect_taget()\n");
+		LOG("Error making msg in connect_taget()\n");
 		return 0;
 	}
 	if (send(s, msg, strlen(msg), 0) < 0) {
@@ -103,7 +115,7 @@ connect_target(const int s, const  char *fp, const unsigned num_conns) {
 	}
 	if (strncmp(buf, good_resp, strlen(good_resp))) {
 		buf[len] = '\0';
-		fprintf(stderr, "Unknown connect_target() response: %s\n", buf);
+		LOG("Unknown connect_target() response: %s\n", buf);
 		return 0;
 	}
 	return 1;
@@ -118,7 +130,7 @@ start_measurement(const int s, const unsigned dur) {
 	const int buf_size = 1024;
 	char msg[buf_size];
 	if (snprintf(msg, buf_size, "TESTSPEED %d\n", dur) < 0) {
-		fprintf(stderr, "Error making msg in start_measurement()\n");
+		LOG("Error making msg in start_measurement()\n");
 		return 0;
 	}
 	if (send(s, msg, strlen(msg), 0) < 0) {
@@ -172,7 +184,7 @@ get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_s
 		if ((ctrl_sock = get_ctrl_sock(host, port)) < 0) {
 			return i;
 		}
-		fprintf(stderr, "connected to %s:%s\n", host, port);
+		LOG("connected to %s:%s\n", host, port);
 		ctrl_socks[i] = ctrl_sock;
 	}
 	return num_hostports;
@@ -234,6 +246,7 @@ max(const int array[], const int array_len) {
 
 int
 main(const int argc, const char *argv[]) {
+	FILE *fp_file;
 	// all the socks we have to tor client ctrl ports
 	int ctrl_socks[MAX_NUM_CTRL_SOCKS];
 	// to tell select() all the sockets we care about reading from
@@ -252,8 +265,12 @@ main(const int argc, const char *argv[]) {
 	int bytes_read_this_time;
 	// used repeatedly to store the current time for printing
 	struct timeval resp_time;
-	// relay fingerprint to measure
-	const char *fp = argv[1];
+	// filename containing relay fingerprints
+	const char *fp_filename = argv[1];
+	// stores result of getline() on fp_file
+	char *fp_file_line = NULL;
+	size_t fp_file_line_cap = 0;
+	ssize_t fp_file_bytes_read;
 	// number of socks each tor client should open to the target
 	const unsigned num_conns = atoi(argv[2]);
 	// how long the clients should measure for, in seconds
@@ -268,12 +285,17 @@ main(const int argc, const char *argv[]) {
 	// numer of host+port pairs that are specified on the cmd line
 	unsigned num_hostports = (argc - 4) / 2;
 	if (num_hostports > MAX_NUM_CTRL_SOCKS) {
-		fprintf(stderr, "%u is too many tor clients, sorry.\n", num_hostports);
+		LOG("%u is too many tor clients, sorry.\n", num_hostports);
+		ret = -1;
+		goto end;
+	}
+	if ((fp_file = fopen(fp_filename, "r")) == NULL) {
+		LOG("Unable to open %s\n", fp_filename);
 		ret = -1;
 		goto end;
 	}
 	if ((num_ctrl_socks = get_ctrl_socks(num_hostports, hostport_argv, ctrl_socks)) != num_hostports) {
-		fprintf(stderr, "Unable to open all sockets\n");
+		LOG("Unable to open all sockets\n");
 		ret = -1;
 		goto cleanup;
 	}
@@ -283,49 +305,75 @@ main(const int argc, const char *argv[]) {
 		ret = -1;
 		goto cleanup;
 	}
-	if (!connect_target_all(num_ctrl_socks, ctrl_socks, fp, num_conns)) {
-		ret = -1;
-		goto cleanup;
-	}
-	if (!start_measurements(num_ctrl_socks, ctrl_socks, dur)) {
-		fprintf(stderr, "Error starting all measurements\n");
-		ret = -1;
-		goto cleanup;
-	}
-
-	while (1) {
-		FD_ZERO(&read_set);
-		for (int i = 0; i < num_ctrl_socks; i++) {
-			FD_SET(ctrl_socks[i], &read_set);
+	while ((fp_file_bytes_read = getline(&fp_file_line, &fp_file_line_cap, fp_file)) >= 0) {
+		// ignore empty lines
+		if (!fp_file_bytes_read)
+			continue;
+		// ignore comments
+		if (fp_file_line[0] == '#')
+			continue;
+		// ignore lines that probably aren't fingerprints
+		if ((fp_file_line[fp_file_bytes_read-1] == '\n' && fp_file_bytes_read != 41) ||
+				(fp_file_line[fp_file_bytes_read-1] != '\n' && fp_file_bytes_read == 40)) {
+			LOG("Ignoring line that doesn't look like fingerprint: \"%s\"", fp_file_line);
+			continue;
 		}
-		select_timeout.tv_sec = 3;
-		select_timeout.tv_usec = 0;
-		select_result = select(max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout);
-		if (select_result < 0) {
-			perror("Error on select()");
+		// replace newline with null
+		if (fp_file_line[fp_file_bytes_read-1] == '\n')
+			fp_file_line[fp_file_bytes_read-1] = '\0';
+		// we most likely have a fingerprint. assume we do.
+		const char *fp = fp_file_line;
+		LOG("Now measuring %s\n", fp);
+		if (!connect_target_all(num_ctrl_socks, ctrl_socks, fp, num_conns)) {
 			ret = -1;
 			goto cleanup;
-		} else if (select_result == 0) {
-			fprintf(stderr, "%ld.%06d sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
-			//ret = -1;
+		}
+		if (!start_measurements(num_ctrl_socks, ctrl_socks, dur)) {
+			LOG("Error starting all measurements\n");
+			ret = -1;
 			goto cleanup;
 		}
-		for (int i = 0; i< num_ctrl_socks; i++) {
-			if (FD_ISSET(ctrl_socks[i], &read_set)) {
-				if ((bytes_read_this_time = read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time)) <= 0) {
-					fprintf(stderr, "select() said there was something to read on %d, but read zero bytes or had error.\n", ctrl_socks[i]);
-					ret = -1;
-					goto cleanup;
+		while (1) {
+			FD_ZERO(&read_set);
+			for (int i = 0; i < num_ctrl_socks; i++) {
+				FD_SET(ctrl_socks[i], &read_set);
+			}
+			select_timeout.tv_sec = 3;
+			select_timeout.tv_usec = 0;
+			select_result = select(max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout);
+			if (select_result < 0) {
+				perror("Error on select()");
+				ret = -1;
+				goto cleanup;
+			} else if (select_result == 0) {
+				LOG("%ld.%06d sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+				//ret = -1;
+				goto cleanup;
+			}
+			for (int i = 0; i< num_ctrl_socks; i++) {
+				if (FD_ISSET(ctrl_socks[i], &read_set)) {
+					bytes_read_this_time = read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time);
+					if (bytes_read_this_time < 0) {
+						LOG("select() said there was something to read on %d, but had error.\n", ctrl_socks[i]);
+						ret = -1;
+						goto cleanup;
+					} else if (bytes_read_this_time == 0) {
+						LOG("read 0 bytes when select() said there was something to read on %d\n", ctrl_socks[i]);
+						goto end_of_single_fp_loop;
+					}
+					resp_buf[bytes_read_this_time+1] = '\0';
+					printf("%ld.%06d %s %d %s", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
 				}
-				resp_buf[bytes_read_this_time+1] = '\0';
-				printf("%ld.%06d %s", resp_time.tv_sec, resp_time.tv_usec, resp_buf);
 			}
 		}
+end_of_single_fp_loop:
+		sleep(1);
 	}
 
 cleanup:
+	fclose(fp_file);
 	for (int i = 0; i < num_ctrl_socks; i++) {
-		fprintf(stderr, "Closing sock=%d\n", ctrl_socks[i]);
+		LOG("Closing sock=%d\n", ctrl_socks[i]);
 		close(ctrl_socks[i]);
 	}
 end:
