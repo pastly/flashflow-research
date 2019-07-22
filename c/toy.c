@@ -12,11 +12,16 @@
 #define READ_BUF_LEN 1024*8
 #define MAX_NUM_CTRL_SOCKS 64
 
+#ifdef __APPLE__
+#define TS_FMT "%ld.%06d"
+#else
+#define TS_FMT "%ld.%06ld"
+#endif
 #define LOG(fmt, ...) \
 	do { \
 		struct timeval t; \
 		gettimeofday(&t, NULL); \
-		fprintf(stderr, "[%ld.%06ld] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
+		fprintf(stderr, "[" TS_FMT "] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
 	} while (0);
 
 void
@@ -353,7 +358,7 @@ main(const int argc, const char *argv[]) {
 				ret = -1;
 				goto cleanup;
 			} else if (select_result == 0) {
-				LOG("%ld.%06ld sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+				LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
 				//ret = -1;
 				goto cleanup;
 			}
@@ -369,7 +374,7 @@ main(const int argc, const char *argv[]) {
 						goto end_of_single_fp_loop;
 					}
 					resp_buf[bytes_read_this_time+1] = '\0';
-					printf("%ld.%06ld %s %d %s", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
+					printf(TS_FMT " %s %d %s", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
 				}
 			}
 		}
