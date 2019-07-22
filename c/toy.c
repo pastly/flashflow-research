@@ -16,7 +16,7 @@
 	do { \
 		struct timeval t; \
 		gettimeofday(&t, NULL); \
-		fprintf(stderr, "[%ld.%06d] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
+		fprintf(stderr, "[%ld.%06ld] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
 	} while (0);
 
 void
@@ -175,7 +175,8 @@ read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
  */
 int
 get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_socks[]) {
-	for (int i = 0; i < num_hostports; i++) {
+	int i;
+	for (i = 0; i < num_hostports; i++) {
 		int host_idx = i * 2;
 		int port_idx = host_idx + 1;
 		int ctrl_sock;
@@ -196,7 +197,8 @@ get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_s
  */
 int
 auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[]) {
-	for (int i = 0; i < num_ctrl_socks; i++) {
+	int i;
+	for (i = 0; i < num_ctrl_socks; i++) {
 		if (!auth_ctrl_sock(ctrl_socks[i])) {
 			return 0;
 		}
@@ -212,7 +214,8 @@ auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[]) {
  */
 int
 connect_target_all(const int num_ctrl_socks, const int ctrl_socks[], const char *fp, const unsigned num_conns_each) {
-	for (int i = 0; i < num_ctrl_socks; i++) {
+	int i;
+	for (i = 0; i < num_ctrl_socks; i++) {
 		if (!connect_target(ctrl_socks[i], fp, num_conns_each)) {
 			return 0;
 		}
@@ -227,7 +230,8 @@ connect_target_all(const int num_ctrl_socks, const int ctrl_socks[], const char 
  */
 int
 start_measurements(const int num_ctrl_socks, const int ctrl_socks[], const unsigned duration) {
-	for (int i = 0; i < num_ctrl_socks; i++) {
+	int i;
+	for (i = 0; i < num_ctrl_socks; i++) {
 		if (!(start_measurement(ctrl_socks[i], duration))) {
 			return 0;
 		}
@@ -238,7 +242,8 @@ start_measurements(const int num_ctrl_socks, const int ctrl_socks[], const unsig
 int
 max(const int array[], const int array_len) {
 	int the_max = INT_MIN;
-	for (int i = 0; i < array_len; i++) {
+	int i;
+	for (i = 0; i < array_len; i++) {
 		the_max = array[i] > the_max ? array[i] : the_max;
 	}
 	return the_max;
@@ -259,6 +264,8 @@ main(const int argc, const char *argv[]) {
 	struct timeval select_timeout;
 	// the return value of this func
 	int ret = 0;
+	// loop iter counter
+	int i;
 	// buffer to store responses from tor clients
 	char resp_buf[READ_BUF_LEN];
 	// stores number of bytes read from read_response()
@@ -335,7 +342,7 @@ main(const int argc, const char *argv[]) {
 		}
 		while (1) {
 			FD_ZERO(&read_set);
-			for (int i = 0; i < num_ctrl_socks; i++) {
+			for (i = 0; i < num_ctrl_socks; i++) {
 				FD_SET(ctrl_socks[i], &read_set);
 			}
 			select_timeout.tv_sec = 3;
@@ -346,11 +353,11 @@ main(const int argc, const char *argv[]) {
 				ret = -1;
 				goto cleanup;
 			} else if (select_result == 0) {
-				LOG("%ld.%06d sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+				LOG("%ld.%06ld sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
 				//ret = -1;
 				goto cleanup;
 			}
-			for (int i = 0; i< num_ctrl_socks; i++) {
+			for (i = 0; i< num_ctrl_socks; i++) {
 				if (FD_ISSET(ctrl_socks[i], &read_set)) {
 					bytes_read_this_time = read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time);
 					if (bytes_read_this_time < 0) {
@@ -362,7 +369,7 @@ main(const int argc, const char *argv[]) {
 						goto end_of_single_fp_loop;
 					}
 					resp_buf[bytes_read_this_time+1] = '\0';
-					printf("%ld.%06d %s %d %s", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
+					printf("%ld.%06ld %s %d %s", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
 				}
 			}
 		}
@@ -372,7 +379,7 @@ end_of_single_fp_loop:
 
 cleanup:
 	fclose(fp_file);
-	for (int i = 0; i < num_ctrl_socks; i++) {
+	for (i = 0; i < num_ctrl_socks; i++) {
 		LOG("Closing sock=%d\n", ctrl_socks[i]);
 		close(ctrl_socks[i]);
 	}
