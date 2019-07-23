@@ -28,11 +28,12 @@ void
 usage() {
 	const char *s = \
 	"arguments: <fingerprint_file> <num_socks_per_host> <duration> "
-	"<host> <port> [host port [host port ...]]\n"
+	"<ctrl_pw> <host> <port> [host port [host port ...]]\n"
 	"\n"
 	"fingerprint_file    place from which to read fingerprints to measure, one per line\n"
 	"num_socks_per_host  how many sockets each tor client should open to the target relay\n"
 	"duration            duration of each measurement\n"
+	"ctrl_pw             password used to auth to tor client, can be empty string\n"
 	"host port           hostname and port of a tor client. specify this 1 or more times\n";
 	LOG("%s", s);
 }
@@ -66,16 +67,22 @@ get_ctrl_sock(const char *host, const char *port) {
 }
 
 /*
- * authenticate to tor. can only "auth" to tor with no auth. no password or
- * cookie file.
- * give socket that's already connected
+ * authenticate to tor. can auth with password or no auth.
+ * give socket that's already connected. if no password, give NULL or empty
+ * string, otherwise give the password.
  * returns false if error, otherwise true
  */
 int
-auth_ctrl_sock(const int s) {
+auth_ctrl_sock(const int s, const char *ctrl_pw) {
 	char buf[READ_BUF_LEN];
+	char msg[80];
 	int len;
-	const char *msg = "AUTHENTICATE\n";
+	if (!ctrl_pw)
+		ctrl_pw = "";
+	if (snprintf(msg, 80, "AUTHENTICATE \"%s\"\n", ctrl_pw) < 0) {
+		perror("Error snprintf auth message");
+		return 0;
+	}
 	const char *good_resp = "250 OK";
 	if (send(s, msg, strlen(msg), 0) < 0) {
 		perror("Error sending auth message");
@@ -201,10 +208,10 @@ get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_s
  * returns false if we fail to auth to any tor, otherwise true.
  */
 int
-auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[]) {
+auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[], const char *ctrl_pw) {
 	int i;
 	for (i = 0; i < num_ctrl_socks; i++) {
-		if (!auth_ctrl_sock(ctrl_socks[i])) {
+		if (!auth_ctrl_sock(ctrl_socks[i], ctrl_pw)) {
 			return 0;
 		}
 	}
@@ -288,15 +295,17 @@ main(const int argc, const char *argv[]) {
 	const unsigned num_conns = atoi(argv[2]);
 	// how long the clients should measure for, in seconds
 	const unsigned dur = atoi(argv[3]);
+	// password to use to auth to tor clients
+	const char *ctrl_pw = argv[4];
 	// first host/port arg, all following args are also host/port
-	const char **hostport_argv = &argv[4];
-	if (argc < 6 || argc % 2 != 0) {
+	const char **hostport_argv = &argv[5];
+	if (argc < 7 || argc % 2 != 1) {
 		usage();
 		ret = -1;
 		goto end;
 	}
 	// numer of host+port pairs that are specified on the cmd line
-	unsigned num_hostports = (argc - 4) / 2;
+	unsigned num_hostports = (argc - 5) / 2;
 	if (num_hostports > MAX_NUM_CTRL_SOCKS) {
 		LOG("%u is too many tor clients, sorry.\n", num_hostports);
 		ret = -1;
@@ -314,7 +323,7 @@ main(const int argc, const char *argv[]) {
 	}
 	// to tell select() the max fd we care about
 	const int max_ctrl_sock = max(ctrl_socks, num_ctrl_socks);
-	if (!auth_ctrl_socks(num_ctrl_socks, ctrl_socks)) {
+	if (!auth_ctrl_socks(num_ctrl_socks, ctrl_socks, ctrl_pw)) {
 		ret = -1;
 		goto cleanup;
 	}
