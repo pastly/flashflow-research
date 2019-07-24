@@ -338,7 +338,7 @@ main(const int argc, const char *argv[]) {
     // print out useful info about each ctrl conn we have
     for (i = 0; i < num_ctrl_socks; i++) {
         struct ctrl_sock_meta meta = ctrl_sock_metas[i];
-        LOG("sing %s:%s fd=%d nconns=%d\n", meta.host, meta.port, meta.fd, meta.nconns);
+        LOG("using %s:%s fd=%d nconns=%d\n", meta.host, meta.port, meta.fd, meta.nconns);
     }
     // to tell select() the max fd we care about
     const int the_max_ctrl_sock = max_ctrl_sock(ctrl_sock_metas, num_ctrl_socks);
