@@ -15,15 +15,13 @@ def data_iter(fd):
         try:
             t = float(words[0])
         except Exception:
-            log('Bad timestsamp: %s', words[0])
+            log('Bad timestsamp:', words[0])
             continue
-        try:
-            sock = int(words[2])
-        except Exception:
-            log('Bad sock: %s', words[2])
-            continue
+        hostport = words[2]
         if words[3] != '650':
-            log('words[3] should be 650')
+            # first line will be 250, don't log if so
+            if words[3] != '250':
+                log('words[3] should be 650')
             continue
         if words[4] != 'SPEEDTESTING':
             log('words[4] should be SPEEDTESTING')
@@ -31,20 +29,20 @@ def data_iter(fd):
         try:
             bw_down = int(words[5])
         except Exception:
-            log('Bad bw: %s', words[5])
+            log('Bad bw:', words[5])
             continue
         try:
             bw_up = int(words[6])
         except Exception:
-            log('Bad bw: %s', words[6])
+            log('Bad bw:', words[6])
             continue
-        yield t, sock, bw_down, bw_up
+        yield t, hostport, bw_down, bw_up
 
 
 def do(fd):
     start = None
     out_data = {}
-    for t, sock, bw_down, bw_up in data_iter(fd):
+    for t, _, bw_down, bw_up in data_iter(fd):
         if int(t) not in out_data:
             out_data[int(t)] = []
         out_data[int(t)].append({'d': bw_down, 'u': bw_up})
