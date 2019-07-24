@@ -24,6 +24,13 @@
 		fprintf(stderr, "[" TS_FMT "] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
 	} while (0);
 
+struct ctrl_sock_meta {
+    int fd;
+    const char *host;
+    const char *port;
+    int nconns;
+};
+
 void
 usage() {
 	const char *s = \
@@ -36,6 +43,19 @@ usage() {
 	"host port n_socks   hostname and port of a tor client, and number of socks it should\n"
     "                    open to target. specify this 1 or more times\n";
 	LOG("%s", s);
+}
+
+int
+meta_idx_for_ctrl_sock(const int fd, const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[]) {
+    int i;
+    struct ctrl_sock_meta meta;
+    for (i = 0; i < num_ctrl_socks; i++) {
+        meta = ctrl_sock_metas[i];
+        if (meta.fd == fd) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 /*
@@ -186,19 +206,24 @@ read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
  * ctrl_socks with the good socks, and return early.
  */
 int
-get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_socks[]) {
+get_ctrl_socks(const unsigned num_hostports, const char *hostports[], struct ctrl_sock_meta ctrl_sock_metas[]) {
 	int i;
 	for (i = 0; i < num_hostports; i++) {
-		int host_idx = i * 2;
+		int host_idx = i * 3;
 		int port_idx = host_idx + 1;
+		int nconns_idx = host_idx + 2;
 		int ctrl_sock;
 		const char *host = hostports[host_idx];
 		const char *port = hostports[port_idx];
+        int nconns = atoi(hostports[nconns_idx]);
 		if ((ctrl_sock = get_ctrl_sock(host, port)) < 0) {
 			return i;
 		}
 		LOG("connected to %s:%s\n", host, port);
-		ctrl_socks[i] = ctrl_sock;
+        ctrl_sock_metas[i].fd = ctrl_sock;
+        ctrl_sock_metas[i].host = host;
+        ctrl_sock_metas[i].port = port;
+        ctrl_sock_metas[i].nconns = nconns;
 	}
 	return num_hostports;
 }
@@ -208,10 +233,10 @@ get_ctrl_socks(const unsigned num_hostports, const char *hostports[], int ctrl_s
  * returns false if we fail to auth to any tor, otherwise true.
  */
 int
-auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[], const char *ctrl_pw) {
+auth_ctrl_socks(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const char *ctrl_pw) {
 	int i;
 	for (i = 0; i < num_ctrl_socks; i++) {
-		if (!auth_ctrl_sock(ctrl_socks[i], ctrl_pw)) {
+		if (!auth_ctrl_sock(ctrl_sock_metas[i].fd, ctrl_pw)) {
 			return 0;
 		}
 	}
@@ -225,10 +250,12 @@ auth_ctrl_socks(const int num_ctrl_socks, const int ctrl_socks[], const char *ct
  * false if any failure, otherwise true.
  */
 int
-connect_target_all(const int num_ctrl_socks, const int ctrl_socks[], const char *fp, const unsigned num_conns_each) {
+connect_target_all(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const char *fp) {
 	int i;
 	for (i = 0; i < num_ctrl_socks; i++) {
-		if (!connect_target(ctrl_socks[i], fp, num_conns_each)) {
+        int fd = ctrl_sock_metas[i].fd;
+        int nconns = ctrl_sock_metas[i].nconns;
+		if (!connect_target(fd, fp, nconns)) {
 			return 0;
 		}
 	}
@@ -241,10 +268,10 @@ connect_target_all(const int num_ctrl_socks, const int ctrl_socks[], const char 
  * false if any falure, otherwise true
  */
 int
-start_measurements(const int num_ctrl_socks, const int ctrl_socks[], const unsigned duration) {
+start_measurements(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const unsigned duration) {
 	int i;
 	for (i = 0; i < num_ctrl_socks; i++) {
-		if (!(start_measurement(ctrl_socks[i], duration))) {
+		if (!(start_measurement(ctrl_sock_metas[i].fd, duration))) {
 			return 0;
 		}
 	}
@@ -252,11 +279,11 @@ start_measurements(const int num_ctrl_socks, const int ctrl_socks[], const unsig
 }
 
 int
-max(const int array[], const int array_len) {
+max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
 	int the_max = INT_MIN;
 	int i;
 	for (i = 0; i < array_len; i++) {
-		the_max = array[i] > the_max ? array[i] : the_max;
+		the_max = array[i].fd > the_max ? array[i].fd : the_max;
 	}
 	return the_max;
 }
@@ -265,7 +292,7 @@ int
 main(const int argc, const char *argv[]) {
 	FILE *fp_file;
 	// all the socks we have to tor client ctrl ports
-	int ctrl_socks[MAX_NUM_CTRL_SOCKS];
+    struct ctrl_sock_meta ctrl_sock_metas[MAX_NUM_CTRL_SOCKS];
 	// to tell select() all the sockets we care about reading from
 	fd_set read_set;
 	// the number of ctrl socks we make successfully
@@ -292,6 +319,7 @@ main(const int argc, const char *argv[]) {
 	size_t fp_file_line_cap = 0;
 	ssize_t fp_file_bytes_read;
 	if (argc < 7 || (argc - 4) % 3 != 0) {
+        LOG("argc=%d\n", argc);
 		usage();
 		ret = -1;
 		goto end;
@@ -304,8 +332,6 @@ main(const int argc, const char *argv[]) {
 	const char **hostport_argv = &argv[4];
 	// numer of host+port+nconn sets that are specified on the cmd line
 	unsigned num_hostports = (argc - 4) / 3;
-    return -2;
-    unsigned num_conns = 1;
 	if (num_hostports > MAX_NUM_CTRL_SOCKS) {
 		LOG("%u is too many tor clients, sorry.\n", num_hostports);
 		ret = -1;
@@ -316,14 +342,20 @@ main(const int argc, const char *argv[]) {
 		ret = -1;
 		goto end;
 	}
-	if ((num_ctrl_socks = get_ctrl_socks(num_hostports, hostport_argv, ctrl_socks)) != num_hostports) {
+    // make all the socks to tor clients
+	if ((num_ctrl_socks = get_ctrl_socks(num_hostports, hostport_argv, ctrl_sock_metas)) != num_hostports) {
 		LOG("Unable to open all sockets\n");
 		ret = -1;
 		goto cleanup;
 	}
+    // print out useful info about each ctrl conn we have
+    for (i = 0; i < num_ctrl_socks; i++) {
+        struct ctrl_sock_meta meta = ctrl_sock_metas[i];
+        LOG("sing %s:%s fd=%d nconns=%d\n", meta.host, meta.port, meta.fd, meta.nconns);
+    }
 	// to tell select() the max fd we care about
-	const int max_ctrl_sock = max(ctrl_socks, num_ctrl_socks);
-	if (!auth_ctrl_socks(num_ctrl_socks, ctrl_socks, ctrl_pw)) {
+	const int the_max_ctrl_sock = max_ctrl_sock(ctrl_sock_metas, num_ctrl_socks);
+	if (!auth_ctrl_socks(num_ctrl_socks, ctrl_sock_metas, ctrl_pw)) {
 		ret = -1;
 		goto cleanup;
 	}
@@ -346,11 +378,11 @@ main(const int argc, const char *argv[]) {
 		// we most likely have a fingerprint. assume we do.
 		const char *fp = fp_file_line;
 		LOG("Now measuring %s\n", fp);
-		if (!connect_target_all(num_ctrl_socks, ctrl_socks, fp, num_conns)) {
+		if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, fp)) {
 			ret = -1;
 			goto cleanup;
 		}
-		if (!start_measurements(num_ctrl_socks, ctrl_socks, dur)) {
+		if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, dur)) {
 			LOG("Error starting all measurements\n");
 			ret = -1;
 			goto cleanup;
@@ -358,10 +390,10 @@ main(const int argc, const char *argv[]) {
 		while (1) {
 			FD_ZERO(&read_set);
 			for (i = 0; i < num_ctrl_socks; i++) {
-				FD_SET(ctrl_socks[i], &read_set);
+				FD_SET(ctrl_sock_metas[i].fd, &read_set);
 			}
 			select_timeout_remaining = select_timeout;
-			select_result = select(max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout_remaining);
+			select_result = select(the_max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout_remaining);
 			if (select_result < 0) {
 				perror("Error on select()");
 				ret = -1;
@@ -371,21 +403,26 @@ main(const int argc, const char *argv[]) {
 				goto end_of_single_fp_loop;
 			}
 			for (i = 0; i< num_ctrl_socks; i++) {
-				if (FD_ISSET(ctrl_socks[i], &read_set)) {
-					bytes_read_this_time = read_response(ctrl_socks[i], resp_buf, READ_BUF_LEN, &resp_time);
+				if (FD_ISSET(ctrl_sock_metas[i].fd, &read_set)) {
+					bytes_read_this_time = read_response(ctrl_sock_metas[i].fd, resp_buf, READ_BUF_LEN, &resp_time);
 					if (bytes_read_this_time < 0) {
-						LOG("select() said there was something to read on %d, but had error.\n", ctrl_socks[i]);
+						LOG("select() said there was something to read on %d, but had error.\n", ctrl_sock_metas[i].fd);
 						ret = -1;
 						goto cleanup;
 					} else if (bytes_read_this_time == 0) {
-						LOG("read 0 bytes when select() said there was something to read on %d\n", ctrl_socks[i]);
+						LOG("read 0 bytes when select() said there was something to read on %d\n", ctrl_sock_metas[i].fd);
 						goto end_of_single_fp_loop;
 					}
 					resp_buf[bytes_read_this_time] = '\0';
 					for (j = bytes_read_this_time-1; resp_buf[j] == '\r' || resp_buf[j] == '\n'; j--) {
 						resp_buf[j] = '\0';
 					}
-					printf(TS_FMT " %s %d %s\n", resp_time.tv_sec, resp_time.tv_usec, fp, ctrl_socks[i], resp_buf);
+					printf(
+                        TS_FMT " %s %s:%s %s\n",
+                        resp_time.tv_sec, resp_time.tv_usec,
+                        fp,
+                        ctrl_sock_metas[i].host, ctrl_sock_metas[i].port,
+                        resp_buf);
 				}
 			}
 		}
@@ -396,8 +433,8 @@ end_of_single_fp_loop:
 cleanup:
 	fclose(fp_file);
 	for (i = 0; i < num_ctrl_socks; i++) {
-		LOG("Closing sock=%d\n", ctrl_socks[i]);
-		close(ctrl_socks[i]);
+		LOG("Closing sock=%d\n", ctrl_sock_metas[i].fd);
+		close(ctrl_sock_metas[i].fd);
 	}
 end:
 	return ret;
