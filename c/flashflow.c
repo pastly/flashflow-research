@@ -45,19 +45,6 @@ usage() {
 	LOG("%s", s);
 }
 
-int
-meta_idx_for_ctrl_sock(const int fd, const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[]) {
-    int i;
-    struct ctrl_sock_meta meta;
-    for (i = 0; i < num_ctrl_socks; i++) {
-        meta = ctrl_sock_metas[i];
-        if (meta.fd == fd) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 /*
  * build a socket to tor's control port at the given host and port
  * returns -1 if error, otherwise socket
@@ -378,21 +365,29 @@ main(const int argc, const char *argv[]) {
 		// we most likely have a fingerprint. assume we do.
 		const char *fp = fp_file_line;
 		LOG("Now measuring %s\n", fp);
+        // tell everyone to connect to the given fingerprint
 		if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, fp)) {
 			ret = -1;
 			goto cleanup;
 		}
+        // tell everyone to start measuring
 		if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, dur)) {
 			LOG("Error starting all measurements\n");
 			ret = -1;
 			goto cleanup;
 		}
+        // "main loop" of receiving results from the measurers
 		while (1) {
 			FD_ZERO(&read_set);
 			for (i = 0; i < num_ctrl_socks; i++) {
 				FD_SET(ctrl_sock_metas[i].fd, &read_set);
 			}
+            // some *nix OSes will use the timeout arg to indicate how much
+            // time was left when it returns successfully. Since we aren't
+            // necessarily interested in that, but we will be interested in the
+            // original timeout later for logging, copy it.
 			select_timeout_remaining = select_timeout;
+            // blocks until timeout or 1 (or more) socket can read
 			select_result = select(the_max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout_remaining);
 			if (select_result < 0) {
 				perror("Error on select()");
@@ -402,8 +397,10 @@ main(const int argc, const char *argv[]) {
 				LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
 				goto end_of_single_fp_loop;
 			}
+            // check each socket and see if it can read
 			for (i = 0; i< num_ctrl_socks; i++) {
 				if (FD_ISSET(ctrl_sock_metas[i].fd, &read_set)) {
+                    // read in the response
 					bytes_read_this_time = read_response(ctrl_sock_metas[i].fd, resp_buf, READ_BUF_LEN, &resp_time);
 					if (bytes_read_this_time < 0) {
 						LOG("select() said there was something to read on %d, but had error.\n", ctrl_sock_metas[i].fd);
@@ -413,10 +410,12 @@ main(const int argc, const char *argv[]) {
 						LOG("read 0 bytes when select() said there was something to read on %d\n", ctrl_sock_metas[i].fd);
 						goto end_of_single_fp_loop;
 					}
+                    // make sure the end is clean, and remove any trailing newlines
 					resp_buf[bytes_read_this_time] = '\0';
 					for (j = bytes_read_this_time-1; resp_buf[j] == '\r' || resp_buf[j] == '\n'; j--) {
 						resp_buf[j] = '\0';
 					}
+                    // output the result on stdout
 					printf(
                         TS_FMT " %s %s:%s %s\n",
                         resp_time.tv_sec, resp_time.tv_usec,
