@@ -291,6 +291,11 @@ main(const int argc, const char *argv[]) {
 	char *fp_file_line = NULL;
 	size_t fp_file_line_cap = 0;
 	ssize_t fp_file_bytes_read;
+	if (argc < 7 || argc % 2 != 1) {
+		usage();
+		ret = -1;
+		goto end;
+	}
 	// number of socks each tor client should open to the target
 	const unsigned num_conns = atoi(argv[2]);
 	// how long the clients should measure for, in seconds
@@ -299,11 +304,6 @@ main(const int argc, const char *argv[]) {
 	const char *ctrl_pw = argv[4];
 	// first host/port arg, all following args are also host/port
 	const char **hostport_argv = &argv[5];
-	if (argc < 7 || argc % 2 != 1) {
-		usage();
-		ret = -1;
-		goto end;
-	}
 	// numer of host+port pairs that are specified on the cmd line
 	unsigned num_hostports = (argc - 5) / 2;
 	if (num_hostports > MAX_NUM_CTRL_SOCKS) {
