@@ -3,10 +3,10 @@
 GCC_FLAGS := -Wall -O2 -ggdb
 GCC := gcc
 
-all: toy
+all: flashflow
 
 clean:
-	rm -fv toy
+	rm -fv flashflow
 
-toy: toy.c
+flashflow: flashflow.c
 	$(GCC) $(GCC_FLAGS) $^ -o $@
