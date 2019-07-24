@@ -27,14 +27,14 @@
 void
 usage() {
 	const char *s = \
-	"arguments: <fingerprint_file> <num_socks_per_host> <duration> "
-	"<ctrl_pw> <host> <port> [host port [host port ...]]\n"
+	"arguments: <fingerprint_file> <duration> "
+	"<ctrl_pw> <host> <port> <n_socks> [host port n_socks [host port n_socks ...]]\n"
 	"\n"
 	"fingerprint_file    place from which to read fingerprints to measure, one per line\n"
-	"num_socks_per_host  how many sockets each tor client should open to the target relay\n"
 	"duration            duration of each measurement\n"
 	"ctrl_pw             password used to auth to tor client, can be empty string\n"
-	"host port           hostname and port of a tor client. specify this 1 or more times\n";
+	"host port n_socks   hostname and port of a tor client, and number of socks it should\n"
+    "                    open to target. specify this 1 or more times\n";
 	LOG("%s", s);
 }
 
@@ -291,21 +291,21 @@ main(const int argc, const char *argv[]) {
 	char *fp_file_line = NULL;
 	size_t fp_file_line_cap = 0;
 	ssize_t fp_file_bytes_read;
-	if (argc < 7 || argc % 2 != 1) {
+	if (argc < 7 || (argc - 4) % 3 != 0) {
 		usage();
 		ret = -1;
 		goto end;
 	}
-	// number of socks each tor client should open to the target
-	const unsigned num_conns = atoi(argv[2]);
 	// how long the clients should measure for, in seconds
-	const unsigned dur = atoi(argv[3]);
+	const unsigned dur = atoi(argv[2]);
 	// password to use to auth to tor clients
-	const char *ctrl_pw = argv[4];
-	// first host/port arg, all following args are also host/port
-	const char **hostport_argv = &argv[5];
-	// numer of host+port pairs that are specified on the cmd line
-	unsigned num_hostports = (argc - 5) / 2;
+	const char *ctrl_pw = argv[3];
+	// first host/port/nconn arg, all following args are also host/port/nconn
+	const char **hostport_argv = &argv[4];
+	// numer of host+port+nconn sets that are specified on the cmd line
+	unsigned num_hostports = (argc - 4) / 3;
+    return -2;
+    unsigned num_conns = 1;
 	if (num_hostports > MAX_NUM_CTRL_SOCKS) {
 		LOG("%u is too many tor clients, sorry.\n", num_hostports);
 		ret = -1;
