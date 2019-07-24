@@ -344,15 +344,19 @@ def _stop_bwevents(args):
 def _start_phnew_tor_clients(args, params):
     procs = []
     for host, bw_lim in zip(params['hosts'], params['host_tor_bws']):
+        n_mproc = NUM_CPU_MAP[host]
         if bw_lim == 'unlim':
             bw_lim = 125000000
         else:
+            # close enough to even distribution of bw lim across cores
             bw_lim = _bw_str_to_bytes(bw_lim)
-        cmd = 'bash -ls {d} {tor_host} {tor_cache_dir} {bw}'.format(
+            bw_lim = (bw_lim // n_mproc) + 1
+        cmd = 'bash -ls {d} {tor_host} {tor_cache_dir} {bw} {n_mproc}'.format(
             d=args.measurer_ph_dir,
             tor_host=args.target_ssh_ip,
             tor_cache_dir=args.target_cache_dir,
             bw=bw_lim,
+            n_mproc=n_mproc,
         )
         script = 'start-phnew-tor-client.sh'
         cmd = ['ssh', host, cmd]
@@ -378,8 +382,9 @@ def _measure_phnew(args, out_dir, i, params):
         os.makedirs(out_dir, exist_ok=True)
         hostports = []
         for host in params['hosts']:
-            hostports.append(IP_MAP[host])
-            hostports.append(PHNEW_CTRL_PORT_MAP[host])
+            for i in range(NUM_CPU_MAP[host]):
+                hostports.append(IP_MAP[host])
+                hostports.append(PHNEW_CTRL_PORT_MAP[host]+i)
         cmd = 'bash -ls {d} {fname} {fp} {hp_pairs}'.format(
             d=args.coord_ph_dir,
             fname='/tmp/phnew.test.txt',
