@@ -51,9 +51,9 @@ for params in orig:
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 3),
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 2),
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 1)):
-            if len(hostset) != 4:
+            if len(hostset) != 2:
                 continue
-            if bw != 'unlim':
+            if bw != '250Mbps':
                 continue
             # measurer-limited
             new = copy.deepcopy(params)
@@ -381,10 +381,16 @@ def _measure_phnew(args, out_dir, i, params):
         _start_dstat(args, params)
         os.makedirs(out_dir, exist_ok=True)
         hostports = []
+        total_num_socks = 160
+        socks_per_host_iter = _split_x_by_y(total_num_socks, len(params['hosts']))
         for host in params['hosts']:
-            for i in range(NUM_CPU_MAP[host]):
+            num_socks_this_host = next(socks_per_host_iter)
+            num_cpu = NUM_CPU_MAP[host]
+            socks_per_cpu_iter = _split_x_by_y(num_socks_this_host, num_cpu)
+            for i in range(num_cpu):
                 hostports.append(IP_MAP[host])
                 hostports.append(PHNEW_CTRL_PORT_MAP[host]+i)
+                hostports.append(next(socks_per_cpu_iter))
         cmd = 'bash -ls {d} {fname} {fp} {hp_pairs}'.format(
             d=args.coord_ph_dir,
             fname='/tmp/phnew.test.txt',
