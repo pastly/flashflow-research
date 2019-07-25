@@ -444,7 +444,7 @@ main(const int argc, const char *argv[]) {
             }
         }
 end_of_single_fp_loop:
-        LOG("Ended with %d total results", total_results);
+        LOG("Ended with %d total results\n", total_results);
         sleep(1);
     }
 
