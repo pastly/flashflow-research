@@ -393,7 +393,7 @@ def _measure_phnew(args, out_dir, i, params):
                 hostports.append(next(socks_per_cpu_iter))
         cmd = 'bash -ls {d} {fname} {fp} {hp_pairs}'.format(
             d=args.coord_ph_dir,
-            fname='/tmp/phnew.test.txt',
+            fname='/tmp/phnew.test.txt.xz',
             fp=args.target_fp,
             hp_pairs=' '.join('%s' % hp for hp in hostports),
         )
@@ -413,10 +413,10 @@ def _measure_phnew(args, out_dir, i, params):
         log.debug('Executing: %s', cmd)
         ret = subprocess.call(cmd)
         log.debug('ret: %s', ret)
-        out_fname = os.path.join(out_dir, 'ph.%d.txt' % i)
+        out_fname = os.path.join(out_dir, 'ph.%d.txt.xz' % i)
         cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
             host=args.coord_ssh_ip,
-            remote_path='/tmp/phnew.test.txt',
+            remote_path='/tmp/phnew.test.txt.xz',
             local_path=out_fname,
         ).split()
         log.debug('Executing: %s', cmd)

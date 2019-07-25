@@ -10,8 +10,8 @@ DURATION=30
 PASSWORD=password
 
 cd $D/c
-rm -fv $FNAME ${FNAME}.xz
+rm -fv $FNAME
 
 date
-./flashflow <(echo $FP) $DURATION $PASSWORD $@ > $FNAME
+./flashflow <(echo $FP) $DURATION $PASSWORD $@ | xz -T 2 > $FNAME
 date
