@@ -391,10 +391,13 @@ def _measure_phnew(args, out_dir, i, params):
                 hostports.append(IP_MAP[host])
                 hostports.append(PHNEW_CTRL_PORT_MAP[host]+i)
                 hostports.append(next(socks_per_cpu_iter))
-        cmd = 'bash -ls {d} {fname} {fp} {hp_pairs}'.format(
+                log.debug('hostport info for %s %d: %s' % (host, i, hostports[-3:]))
+        cmd = 'bash -ls {d} {fname} {fp} {dur} {pw} {hp_pairs}'.format(
             d=args.coord_ph_dir,
             fname='/tmp/phnew.test.txt.xz',
             fp=args.target_fp,
+            dur=args.ph_dur,
+            pw=args.ph_password,
             hp_pairs=' '.join('%s' % hp for hp in hostports),
         )
         script = 'measure-ph.sh'
@@ -773,6 +776,8 @@ if __name__ == '__main__':
 
     p.add_argument('-o', '--out-dir', type=str, default=os.path.abspath('.'),
                    help='path to store results in')
+    p.add_argument('--ph-password', type=str, default='password')
+    p.add_argument('--ph-dur', type=int, default=60)
     p.add_argument('--iperf-dur', type=int, default=60)
     p.add_argument('--num-pings', type=int, default=60)
     p.add_argument('--do-iperf-tcp', action='store_true')

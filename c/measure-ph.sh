@@ -4,10 +4,10 @@ set -eux
 D=$1
 FNAME=$2
 FP=$3
-shift; shift; shift
+DURATION=$4
+PASSWORD=$5
+shift; shift; shift; shift; shift
 
-DURATION=30
-PASSWORD=password
 
 cd $D/c
 rm -fv $FNAME
