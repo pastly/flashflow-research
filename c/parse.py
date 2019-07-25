@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import sys
+import lzma
 
 
 def log(*a, **kw):
@@ -55,8 +56,11 @@ def do(fd):
 
 def main():
     for fname in sys.argv[1:]:
-        with open(fname, 'rt') as fd:
-            do(fd)
+        if fname.endswith('.xz'):
+            fd = lzma.open(fname, 'rt')
+        else:
+            fd = open(fname, 'rt')
+        do(fd)
 
 
 if __name__ == '__main__':
