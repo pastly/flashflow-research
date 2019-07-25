@@ -109,6 +109,27 @@ auth_ctrl_sock(const int s, const char *ctrl_pw) {
 }
 
 /*
+ * calls select() on the given socket, waiting for read. Returns negative if
+ * error, 0 if timeout occurs, and 1 if readable before timeout.
+ */
+int
+wait_till_readable(const int s, const struct timeval timeout) {
+    struct timeval timeout_remaining = timeout;
+    int result;
+    fd_set set;
+    FD_ZERO(&set);
+    FD_SET(s, &set);
+    result = select(s+1, &set, NULL, NULL, &timeout_remaining);
+    if (result < 0) {
+        perror("error on select() waiting for readable");
+        return result;
+    } else if (result == 0) {
+        return 0;
+    }
+    return FD_ISSET(s, &set) ? 1 : 0;
+}
+
+/*
  * tell tor via the given socket to connect to the target relay by the given
  * fingerprint with the given number of conns.
  * returns false if error, otherwise true
@@ -120,12 +141,21 @@ connect_target(const int s, const  char *fp, const unsigned num_conns) {
     const int buf_size = 1024;
     char msg[buf_size];
     int len;
+    int wait_result;
+    struct timeval read_timeout = {.tv_sec = 10, .tv_usec = 0};
     if (snprintf(msg, buf_size, "TESTSPEED %s %d\n", fp, num_conns) < 0) {
         LOG("Error making msg in connect_taget()\n");
         return 0;
     }
     if (send(s, msg, strlen(msg), 0) < 0) {
         perror("Error sending connect_taget() message");
+        return 0;
+    }
+    wait_result = wait_till_readable(s, read_timeout);
+    if (wait_result < 0) {
+        return 0;
+    } else if (wait_result == 0) {
+        LOG("Timed out waiting for %d to be readable\n", s);
         return 0;
     }
     if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
