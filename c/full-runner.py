@@ -45,16 +45,16 @@ param_sets = [
 orig = copy.deepcopy(param_sets)
 param_sets = []
 for params in orig:
-    for bw in ['750Mbps', '500Mbps', 'unlim', '250Mbps']:
+    for bw in ['250Mbps', '500Mbps', '750Mbps', 'unlim']:
         for hostset in chain(
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 4),
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 3),
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 2),
                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 1)):
-            if len(hostset) != 2:
-                continue
-            if bw != '250Mbps':
-                continue
+            #if len(hostset) != 4:
+            #    continue
+            #if bw != '250Mbps':
+            #    continue
             # measurer-limited
             new = copy.deepcopy(params)
             new['hosts'] = list(hostset)
@@ -63,13 +63,13 @@ for params in orig:
             new['tor_bw'] = 'unlim'
             param_sets.append(new)
             # target-limited
-            # if bw == 'unlim': continue
-            # new = copy.deepcopy(params)
-            # new['hosts'] = list(hostset)
-            # new['host_bws'] = ['unlim'] * len(hostset)
-            # new['host_tor_bws'] = ['unlim'] * len(hostset)
-            # new['tor_bw'] = bw
-            # param_sets.append(new)
+            if bw == 'unlim': continue
+            new = copy.deepcopy(params)
+            new['hosts'] = list(hostset)
+            new['host_bws'] = ['unlim'] * len(hostset)
+            new['host_tor_bws'] = ['unlim'] * len(hostset)
+            new['tor_bw'] = bw
+            param_sets.append(new)
 
 # for p in param_sets:
 #     print(p)
@@ -387,11 +387,11 @@ def _measure_phnew(args, out_dir, i, params):
             num_socks_this_host = next(socks_per_host_iter)
             num_cpu = NUM_CPU_MAP[host]
             socks_per_cpu_iter = _split_x_by_y(num_socks_this_host, num_cpu)
-            for i in range(num_cpu):
+            for cpu_num in range(num_cpu):
                 hostports.append(IP_MAP[host])
-                hostports.append(PHNEW_CTRL_PORT_MAP[host]+i)
+                hostports.append(PHNEW_CTRL_PORT_MAP[host]+cpu_num)
                 hostports.append(next(socks_per_cpu_iter))
-                log.debug('hostport info for %s %d: %s' % (host, i, hostports[-3:]))
+                log.debug('hostport info for %s %d: %s' % (host, cpu_num, hostports[-3:]))
         cmd = 'bash -ls {d} {fname} {fp} {dur} {pw} {hp_pairs}'.format(
             d=args.coord_ph_dir,
             fname='/tmp/phnew.test.txt.xz',
@@ -407,30 +407,30 @@ def _measure_phnew(args, out_dir, i, params):
         log.debug('ret: %s', ret)
         _stop_dstat(args, params)
         _stop_bwevents(args)
-        out_fname = os.path.join(out_dir, 'bwevents.%s.ph.%d.log' % (args.target_ssh_ip, i))
+        bwevents_out_fname = _get_next_fname(out_dir, 'bwevents.{h}.ph.{i}.log', i, h=args.target_ssh_ip)
         cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
             host=args.target_ssh_ip,
             remote_path='/tmp/bwevents.log',
-            local_path=out_fname,
+            local_path=bwevents_out_fname,
         ).split()
         log.debug('Executing: %s', cmd)
         ret = subprocess.call(cmd)
         log.debug('ret: %s', ret)
-        out_fname = os.path.join(out_dir, 'ph.%d.txt.xz' % i)
+        ph_out_fname = _get_next_fname(out_dir, 'ph.{i}.txt.xz', i)
         cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
             host=args.coord_ssh_ip,
             remote_path='/tmp/phnew.test.txt.xz',
-            local_path=out_fname,
+            local_path=ph_out_fname,
         ).split()
         log.debug('Executing: %s', cmd)
         ret = subprocess.call(cmd)
         log.debug('ret: %s', ret)
         for host in [args.target_ssh_ip] + params['hosts']:
-            out_fname = os.path.join(out_dir, 'dstat.%s.ph.%d.csv' % (host, i))
+            dstat_out_fname = _get_next_fname(out_dir, 'dstat.{h}.ph.{i}.csv', i, h=host)
             cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
                 host=host,
                 remote_path='/tmp/dstat.csv',
-                local_path=out_fname,
+                local_path=dstat_out_fname,
             ).split()
             log.debug('Executing: %s', cmd)
             ret = subprocess.call(cmd)
@@ -440,64 +440,6 @@ def _measure_phnew(args, out_dir, i, params):
         _stop_bwevents(args)
         _stop_phnew_tor_clients(args, params)
         _stop_tor(args)
-
-
-#  def _measure_ph(args, out_dir, i, params):
-#      try:
-#          _start_tor(args, params)
-#          _start_ph_coord(args, params)
-#          _start_ph_measurer(args, params)
-#          _start_bwevents(args)
-#          _start_dstat(args, params)
-#          os.makedirs(out_dir, exist_ok=True)
-#          script = 'measure-ph.sh'
-#          cmd = 'bash -ls {d} {fname} {fp} {num_mproc} {num_c_per_mpc}'.format(
-#              d=args.coord_ph_dir,
-#              fname='/media/f6b6/x76slv/test.dat',
-#              fp=args.target_fp,
-#              num_mproc=sum(NUM_CPU_MAP[h] for h in params['hosts']),
-#              num_c_per_mpc=params['num_c_overall'],
-#              #num_c_per_mpc=params['num_c_overall'] // len(params['hosts']),
-#          )
-#          cmd = ['ssh', args.coord_ssh_ip, cmd]
-#          log.debug('Executing: %s (with %s as input)', cmd, script)
-#          ret = subprocess.call(cmd, stdin=open(script, 'rt'))
-#          log.debug('ret: %s', ret)
-#          _stop_dstat(args, params)
-#          _stop_bwevents(args)
-#          out_fname = os.path.join(out_dir, 'ph.%d.dat.xz' % i)
-#          cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
-#              host=args.coord_ssh_ip,
-#              remote_path='/media/f6b6/x76slv/test.dat.xz',
-#              local_path=out_fname,
-#          ).split()
-#          log.debug('Executing: %s', cmd)
-#          ret = subprocess.call(cmd)
-#          log.debug('ret: %s', ret)
-#          out_fname = os.path.join(out_dir, 'bwevents.%s.ph.%d.log' % (args.target_ssh_ip, i))
-#          cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
-#              host=args.target_ssh_ip,
-#              remote_path='/tmp/bwevents.log',
-#              local_path=out_fname,
-#          ).split()
-#          log.debug('Executing: %s', cmd)
-#          ret = subprocess.call(cmd)
-#          log.debug('ret: %s', ret)
-#          for host in [args.target_ssh_ip] + params['hosts']:
-#              out_fname = os.path.join(out_dir, 'dstat.%s.ph.%d.csv' % (host, i))
-#              cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
-#                  host=host,
-#                  remote_path='/tmp/dstat.csv',
-#                  local_path=out_fname,
-#              ).split()
-#              log.debug('Executing: %s', cmd)
-#              ret = subprocess.call(cmd)
-#              log.debug('ret: %s', ret)
-#      finally:
-#          _stop_dstat(args, params)
-#          _stop_bwevents(args)
-#          _stop_ph(args, params)
-#          _stop_tor(args)
 
 
 def _start_dstat(args, params):
@@ -601,58 +543,6 @@ def _stop_iperf_server(args):
     log.debug('ret: %s', ret)
 
 
-# def _start_ph_coord(args, params):
-#     script = 'start-ph-coord.sh'
-#     cmd = 'bash -ls {d} {tor_host} {tor_cache_dir}'.format(
-#         d=args.coord_ph_dir,
-#         tor_host=args.target_ssh_ip,
-#         tor_cache_dir=args.target_cache_dir,
-#     )
-#     cmd = ['ssh', args.coord_ssh_ip, cmd]
-#     log.debug('Executing: %s (with %s as input)', cmd, script)
-#     ret = subprocess.call(cmd, stdin=open(script, 'rt'))
-#     log.debug('ret: %s', ret)
-#     t = 10
-#     log.debug('Sleeping for %d seconds', t)
-#     time.sleep(t)
-
-
-# def _start_ph_measurer(args, params):
-#     script = 'start-ph-measurer.sh'
-#     wait_time = 0
-#     procs = []
-#     for host, bw_lim in zip(params['hosts'], params['host_tor_bws']):
-#         num_m = NUM_CPU_MAP[host]
-#         wait_time += num_m / 4
-#         if bw_lim == 'unlim':
-#             bw_lim = 125000000
-#             # if unlimited, might as well give all procs a ton instead of
-#             # "just" a a ton dividied by the number of cores
-#             bw_lim = iter([bw_lim] * num_m)
-#         else:
-#             bw_lim = _bw_str_to_bytes(bw_lim)
-#             # split the bw limit up evenly across the cpus
-#             bw_lim = _split_x_by_y(bw_lim, num_m)
-#         cmd = 'bash -ls {d} {tor_host} {tor_cache_dir} {n} {bw_lim}'.format(
-#             d=args.measurer_ph_dir,
-#             tor_host=args.target_ssh_ip,
-#             tor_cache_dir=args.target_cache_dir,
-#             n=num_m,
-#             bw_lim=next(bw_lim),
-#         )
-#         cmd = ['ssh', host, cmd]
-#         log.debug('Executing: %s (with %s as input)', cmd, script)
-#         procs.append(
-#             subprocess.Popen(cmd, stdin=open(script, 'rt')))
-#     rets = []
-#     for p in procs:
-#         rets.append(p.wait())
-#     log.debug('rets: %s', rets)
-#     if wait_time > 1:
-#         log.debug('Sleeping an extra %0.2fs to let measurers connect', wait_time)
-#         time.sleep(wait_time)
-
-
 def _stop_ph(args, params):
     procs, rets = [], []
     for host in [args.coord_ssh_ip, *params['hosts']]:
@@ -699,6 +589,10 @@ def _stop_tor(args):
 
 
 def _decompress_all(dname):
+    log.error('--------------------------')
+    log.error('Not safe to call decompress_all() when using _get_next_fname()')
+    log.error('--------------------------')
+    return
     script = './decompress-data.sh'
     cmd = [script, dname]
     log.debug('Executing: %s', cmd)
@@ -722,32 +616,22 @@ def main(args):
             #_set_sysctl(args, params)
             #_set_tc(args, params)
             # Begin measurements
-            # if len(params['hosts']) == 1:
-            #     log.debug(
-            #         'Measuring ping and iperf from %s to %s',
-            #         params['hosts'][0], args.target_ssh_ip)
-            #     _measure_ping(args, out_dir, 1, params)
-            #     _measure_iperf(args, out_dir, 1, params)
+            if len(params['hosts']) == 1:
+                log.debug(
+                    'Measuring ping and iperf from %s to %s',
+                    params['hosts'][0], args.target_ssh_ip)
+                _measure_ping(args, out_dir, 1, params)
+                _measure_iperf(args, out_dir, 1, params)
             _measure_phnew(args, out_dir, 1, params)
             # End measurements
             #_unset_sysctl(args, params)
             #_unset_tc(args, params)
-            _decompress_all(out_dir)
-            break
+            # _decompress_all(out_dir)
     finally:
         #_unset_sysctl(args, params)
         #_unset_tc(args, params)
-        _decompress_all(out_dir)
+        # _decompress_all(out_dir)
         pass
-
-#for p in param_sets:
-#    n_socks = []
-#    for host in p['hosts']:
-#        others = [h for h in p['hosts'] if h != host]
-#        n_socks.append(_num_socks_for_host(host, others, p['num_c_overall']))
-#    if sum(n_socks) != 160:
-#        print(p['hosts'], sum(n_socks), n_socks)
-#exit(0)
 
 
 if __name__ == '__main__':
