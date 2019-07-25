@@ -366,17 +366,27 @@ main(const int argc, const char *argv[]) {
         const char *fp = fp_file_line;
         LOG("Now measuring %s\n", fp);
         // tell everyone to connect to the given fingerprint
+        LOG("Telling everyone to connect to %s\n", fp);
         if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, fp)) {
             ret = -1;
             goto cleanup;
         }
+        LOG("Everyone connected to %s\n", fp);
         // tell everyone to start measuring
+        LOG("Telling everyone to measure for %d\n", dur);
         if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, dur)) {
             LOG("Error starting all measurements\n");
             ret = -1;
             goto cleanup;
         }
+        LOG("Everyone got the message to measure for %d\n", dur);
         // "main loop" of receiving results from the measurers
+        LOG("Entering read loop\n");
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        long last_logged_second = now.tv_sec;
+        int results_since_last_logged = 0;
+        int total_results = 0;
         while (1) {
             FD_ZERO(&read_set);
             for (i = 0; i < num_ctrl_socks; i++) {
@@ -422,10 +432,18 @@ main(const int argc, const char *argv[]) {
                         fp,
                         ctrl_sock_metas[i].host, ctrl_sock_metas[i].port,
                         resp_buf);
+                    results_since_last_logged++;
+                    total_results++;
+                    gettimeofday(&now, NULL);
+                    if (now.tv_sec > last_logged_second) {
+                        LOG("Have %d results (%d total)\n", results_since_last_logged, total_results);
+                        results_since_last_logged = 0;
+                    }
                 }
             }
         }
 end_of_single_fp_loop:
+        LOG("Ended with %d total results", total_results);
         sleep(1);
     }
 
