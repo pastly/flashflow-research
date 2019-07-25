@@ -343,8 +343,10 @@ def _stop_bwevents(args):
 
 def _start_phnew_tor_clients(args, params):
     procs = []
+    extra_wait = 0
     for host, bw_lim in zip(params['hosts'], params['host_tor_bws']):
         n_mproc = NUM_CPU_MAP[host]
+        extra_wait += n_mproc / 2
         if bw_lim == 'unlim':
             bw_lim = 125000000
         else:
@@ -367,6 +369,8 @@ def _start_phnew_tor_clients(args, params):
     for p in procs:
         rets.append(p.wait())
     log.debug('rets: %s', rets)
+    log.debug('Sleeping an extra %f seconds' % extra_wait)
+    time.sleep(extra_wait)
 
 
 def _stop_phnew_tor_clients(args, params):
@@ -407,6 +411,8 @@ def _measure_phnew(args, out_dir, i, params):
         log.debug('ret: %s', ret)
         _stop_dstat(args, params)
         _stop_bwevents(args)
+        if ret != 0:
+            return False
         bwevents_out_fname = _get_next_fname(out_dir, 'bwevents.{h}.ph.{i}.log', i, h=args.target_ssh_ip)
         cmd = 'rsync -air {host}:{remote_path} {local_path}'.format(
             host=args.target_ssh_ip,
@@ -435,6 +441,7 @@ def _measure_phnew(args, out_dir, i, params):
             log.debug('Executing: %s', cmd)
             ret = subprocess.call(cmd)
             log.debug('ret: %s', ret)
+        return True
     finally:
         _stop_dstat(args, params)
         _stop_bwevents(args)
@@ -622,7 +629,13 @@ def main(args):
                     params['hosts'][0], args.target_ssh_ip)
                 _measure_ping(args, out_dir, 1, params)
                 _measure_iperf(args, out_dir, 1, params)
-            _measure_phnew(args, out_dir, 1, params)
+            for _ in range(args.ph_retries):
+                sec = 5
+                if not _measure_phnew(args, out_dir, 1, params):
+                    log.error('Issue measuring phnew. Will try again in %d seconds' % sec)
+                    time.sleep(sec)
+                else:
+                    break
             # End measurements
             #_unset_sysctl(args, params)
             #_unset_tc(args, params)
@@ -660,6 +673,7 @@ if __name__ == '__main__':
 
     p.add_argument('-o', '--out-dir', type=str, default=os.path.abspath('.'),
                    help='path to store results in')
+    p.add_argument('--ph-retries', type=int, default=5)
     p.add_argument('--ph-password', type=str, default='password')
     p.add_argument('--ph-dur', type=int, default=60)
     p.add_argument('--iperf-dur', type=int, default=60)

@@ -14,4 +14,9 @@ rm -fv $FNAME
 
 date
 ./flashflow <(echo $FP) $DURATION $PASSWORD $@ | xz -T 2 > $FNAME
+RET="${PIPESTATUS[0]}"
+echo flashflow returned $RET
+if [[ "$RET" != "0" ]]; then
+    exit $RET    
+fi
 date
