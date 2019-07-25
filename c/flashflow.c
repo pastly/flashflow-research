@@ -438,6 +438,7 @@ main(const int argc, const char *argv[]) {
                     if (now.tv_sec > last_logged_second) {
                         LOG("Have %d results (%d total)\n", results_since_last_logged, total_results);
                         results_since_last_logged = 0;
+                        last_logged_second = now.tv_sec;
                     }
                 }
             }
