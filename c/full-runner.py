@@ -8,6 +8,7 @@ import sys
 import subprocess
 import time
 import logging
+import re
 from itertools import chain, combinations
 
 log = logging.getLogger(__name__)
@@ -42,34 +43,34 @@ param_sets = [
 ###############################################################################
 # NO MORE EDIT
 ###############################################################################
-orig = copy.deepcopy(param_sets)
+# orig = copy.deepcopy(param_sets)
 param_sets = []
-for params in orig:
-    for bw in ['250Mbps', '500Mbps', '750Mbps', 'unlim']:
-        for hostset in chain(
-                combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 4),
-                combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 3),
-                combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 2),
-                combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 1)):
-            #if len(hostset) != 4:
-            #    continue
-            #if bw != '250Mbps':
-            #    continue
-            # measurer-limited
-            new = copy.deepcopy(params)
-            new['hosts'] = list(hostset)
-            new['host_bws'] = ['unlim'] * len(hostset)
-            new['host_tor_bws'] = [bw] * len(hostset)
-            new['tor_bw'] = 'unlim'
-            param_sets.append(new)
-            # target-limited
-            if bw == 'unlim': continue
-            new = copy.deepcopy(params)
-            new['hosts'] = list(hostset)
-            new['host_bws'] = ['unlim'] * len(hostset)
-            new['host_tor_bws'] = ['unlim'] * len(hostset)
-            new['tor_bw'] = bw
-            param_sets.append(new)
+# for params in orig:
+#     for bw in ['250Mbps', '500Mbps', '750Mbps', 'unlim']:
+#         for hostset in chain(
+#                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 4),
+#                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 3),
+#                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 2),
+#                 combinations(['nrl', 'ddns', 'india.do', 'amst.do'], 1)):
+#             #if len(hostset) != 4:
+#             #    continue
+#             #if bw != '250Mbps':
+#             #    continue
+#             # measurer-limited
+#             new = copy.deepcopy(params)
+#             new['hosts'] = list(hostset)
+#             new['host_bws'] = ['unlim'] * len(hostset)
+#             new['host_tor_bws'] = [bw] * len(hostset)
+#             new['tor_bw'] = 'unlim'
+#             param_sets.append(new)
+#             # target-limited
+#             if bw == 'unlim': continue
+#             new = copy.deepcopy(params)
+#             new['hosts'] = list(hostset)
+#             new['host_bws'] = ['unlim'] * len(hostset)
+#             new['host_tor_bws'] = ['unlim'] * len(hostset)
+#             new['tor_bw'] = bw
+#             param_sets.append(new)
 
 # for p in param_sets:
 #     print(p)
@@ -177,6 +178,52 @@ UDP_BOMB_BW = {
     'india.do': 1076.27,
     'amst.do':  1611.19,
 }
+
+
+def param_sets_from_file(fname):
+    with open(fname, 'rt') as fd:
+        for line in fd:
+            line = line.strip()
+            if not len(line) or line.startswith('#'):
+                continue
+            out = {
+                'hosts': [],
+                'host_bws': [], 'target_bw': '',
+                'host_tor_bws': [], 'tor_bw': '',
+                'mem_def': 'def', 'mem_max': 'def',
+                'num_c_overall': 0,
+            }
+            # make sure its a match
+            pat = r'.*(he-.*-defdefdefmax)/?.*'
+            match = re.match(pat, line)
+            assert match
+            match = match.group(1)
+            assert match.startswith('he-')
+            assert match.endswith('-defdefdefmax')
+            parts = match.split('-')
+            target, measurers, n_socks, target_bw_str, measurers_bw_str, mem = parts
+            # set stuff fetched from the line
+            assert target == 'he'
+            out['hosts'] = measurers.split(',')
+            assert n_socks == '160s'
+            assert n_socks.endswith('s')
+            out['num_c_overall'] = int(n_socks[:n_socks.index('s')])
+            out['tor_bw'] = target_bw_str
+            out['host_tor_bws'] = measurers_bw_str.split(',')
+            assert mem == 'defdefdefmax'
+            # set other stuff stuff
+            out['host_bws'] = ['unlim'] * len(out['hosts'])
+            out['target_bw'] = 'unlim'
+            # final sanity check
+            assert out['hosts']
+            assert out['host_bws']
+            assert out['target_bw']
+            assert out['host_tor_bws']
+            assert out['tor_bw']
+            assert out['mem_def']
+            assert out['mem_max']
+            assert out['num_c_overall']
+            yield out
 
 def _split_x_by_y(x, y):
     ''' Divide X as evenly as possible Y ways using only ints, and return those
@@ -680,9 +727,13 @@ if __name__ == '__main__':
     p.add_argument('--num-pings', type=int, default=60)
     p.add_argument('--do-iperf-tcp', action='store_true')
     p.add_argument('--do-iperf-udp', action='store_true')
+    p.add_argument('--experiment-list', type=str, required=True)
     args = p.parse_args()
     args.out_dir = os.path.abspath(args.out_dir)
     assert args.target_ssh_ip in INTERFACE_MAP
+    assert os.path.isfile(args.experiment_list)
+    param_sets = [_ for _ in param_sets_from_file(args.experiment_list)]
+    log.debug('Read %d params from %s', len(param_sets), args.experiment_list)
     for params in param_sets:
         assert len(params['hosts']) == len(params['host_bws'])
         assert len(params['hosts']) == len(params['host_tor_bws'])
