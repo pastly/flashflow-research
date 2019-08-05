@@ -10,29 +10,18 @@
 
 #include "common.h"
 #include "fpfile.h"
+#include "clientfile.h"
 
 #define READ_BUF_LEN 1024*8
-#define MAX_NUM_CTRL_SOCKS 64
 #define MBITS_TO_BYTES 1000*1000/8
-
-struct ctrl_sock_meta {
-    int fd;
-    const char *host;
-    const char *port;
-    int nconns;
-};
 
 void
 usage() {
     const char *s = \
-    "arguments: <fingerprint_file> <duration> "
-    "<ctrl_pw> <host> <port> <n_socks> [host port n_socks [host port n_socks ...]]\n"
+    "arguments: <fingerprint_file> <client_file>\n"
     "\n"
     "fingerprint_file    place from which to read fingerprints to measure, one per line\n"
-    "duration            duration of each measurement\n"
-    "ctrl_pw             password used to auth to tor client, can be empty string\n"
-    "host port n_socks   hostname and port of a tor client, and number of socks it should\n"
-    "                    open to target. specify this 1 or more times\n";
+    "client_file         place from which to read tor client info, one per line, 'host port ctrl_port_pw'\n";
     LOG("%s", s);
 }
 
@@ -204,36 +193,29 @@ read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
 
 /*
  * open many sockets to tor control ports. hostports[] should be twice the
- * length of num_hostports. it's contents should alternate between hostnames
+ * length of num_tor_clients. it's contents should alternate between hostnames
  * and port numbers.
  * the created sockets will be put into ctrl_socks. make sure it has a capactiy
- * of at least num_hostports.
+ * of at least num_tor_clients.
  * when everything goes well, return the number of sockets created (will equal
- * num_hostports) and put the sockets in ctrl_socks. if something goes wrong,
+ * num_tor_clients) and put the sockets in ctrl_socks. if something goes wrong,
  * return the number of sockets we successfully made before the issue, fill up
  * ctrl_socks with the good socks, and return early.
  */
 int
-get_ctrl_socks(const unsigned num_hostports, const char *hostports[], struct ctrl_sock_meta ctrl_sock_metas[]) {
+get_ctrl_socks(const unsigned num_tor_clients, struct ctrl_sock_meta metas[]) {
     int i;
-    for (i = 0; i < num_hostports; i++) {
-        int host_idx = i * 3;
-        int port_idx = host_idx + 1;
-        int nconns_idx = host_idx + 2;
+    for (i = 0; i < num_tor_clients; i++) {
         int ctrl_sock;
-        const char *host = hostports[host_idx];
-        const char *port = hostports[port_idx];
-        int nconns = atoi(hostports[nconns_idx]);
+        const char *host = metas[i].host;
+        const char *port = metas[i].port;
         if ((ctrl_sock = get_ctrl_sock(host, port)) < 0) {
             return i;
         }
         LOG("connected to %s:%s\n", host, port);
-        ctrl_sock_metas[i].fd = ctrl_sock;
-        ctrl_sock_metas[i].host = host;
-        ctrl_sock_metas[i].port = port;
-        ctrl_sock_metas[i].nconns = nconns;
+        metas[i].fd = ctrl_sock;
     }
-    return num_hostports;
+    return num_tor_clients;
 }
 
 /*
@@ -241,10 +223,10 @@ get_ctrl_socks(const unsigned num_hostports, const char *hostports[], struct ctr
  * returns false if we fail to auth to any tor, otherwise true.
  */
 int
-auth_ctrl_socks(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const char *ctrl_pw) {
+auth_ctrl_socks(const int num_ctrl_socks, const struct ctrl_sock_meta metas[]) {
     int i;
     for (i = 0; i < num_ctrl_socks; i++) {
-        if (!auth_ctrl_sock(ctrl_sock_metas[i].fd, ctrl_pw)) {
+        if (!auth_ctrl_sock(metas[i].fd, metas[i].pw)) {
             return 0;
         }
     }
@@ -365,41 +347,37 @@ main(const int argc, const char *argv[]) {
     struct timeval resp_time;
     // filename containing relay fingerprints
     const char *fp_filename = argv[1];
-    if (argc < 7 || (argc - 4) % 3 != 0) {
+    const char *client_filename = argv[2];
+    if (argc != 3) {
         LOG("argc=%d\n", argc);
         usage();
         ret = -1;
         goto end;
     }
     // how long the clients should measure for, in seconds
-    const unsigned dur = atoi(argv[2]);
-    // password to use to auth to tor clients
-    const char *ctrl_pw = argv[3];
-    // first host/port/nconn arg, all following args are also host/port/nconn
-    const char **hostport_argv = &argv[4];
+    const unsigned dur = 10; //atoi(argv[2]);
     // numer of host+port+nconn sets that are specified on the cmd line
-    unsigned num_hostports = (argc - 4) / 3;
-    // the relay fp we are currently measuring, if any
-    char *fp = NULL;
-    if (num_hostports > MAX_NUM_CTRL_SOCKS) {
-        LOG("%u is too many tor clients, sorry.\n", num_hostports);
+    unsigned num_tor_clients;
+    if ((num_tor_clients = client_file_read(client_filename, ctrl_sock_metas)) < 1) {
         ret = -1;
         goto end;
     }
+    // the relay fp we are currently measuring, if any
+    char *fp = NULL;
     if ((fp_file = fp_file_open(fp_filename)) == NULL) {
         LOG("Unable to open %s\n", fp_filename);
         ret = -1;
         goto end;
     }
     // make all the socks to tor clients
-    if ((num_ctrl_socks = get_ctrl_socks(num_hostports, hostport_argv, ctrl_sock_metas)) != num_hostports) {
+    if ((num_ctrl_socks = get_ctrl_socks(num_tor_clients, ctrl_sock_metas)) != num_tor_clients) {
         LOG("Unable to open all sockets\n");
         ret = -1;
         goto cleanup;
     }
     // set dummy bw limits
     for (i = 0; i < num_ctrl_socks; i++) {
-        bw_rate_limits[i] = 50 * MBITS_TO_BYTES;
+        bw_rate_limits[i] = 100 * MBITS_TO_BYTES;
     }
     // print out useful info about each ctrl conn we have
     for (i = 0; i < num_ctrl_socks; i++) {
@@ -408,7 +386,7 @@ main(const int argc, const char *argv[]) {
     }
     // to tell select() the max fd we care about
     const int the_max_ctrl_sock = max_ctrl_sock(ctrl_sock_metas, num_ctrl_socks);
-    if (!auth_ctrl_socks(num_ctrl_socks, ctrl_sock_metas, ctrl_pw)) {
+    if (!auth_ctrl_socks(num_ctrl_socks, ctrl_sock_metas)) {
         ret = -1;
         goto cleanup;
     }

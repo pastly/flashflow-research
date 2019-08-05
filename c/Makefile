@@ -6,9 +6,11 @@ CC := gcc
 SRC := \
 	flashflow.c \
 	fpfile.c \
+	clientfile.c \
 
 OBJ := \
 	fpfile.o \
+	clientfile.o \
 
 all: flashflow
 

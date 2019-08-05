@@ -15,4 +15,12 @@
         fprintf(stderr, "[" TS_FMT "] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
     } while (0);
 
+struct ctrl_sock_meta {
+    int fd;
+    const char *host;
+    const char *port;
+    const char *pw;
+    int nconns;
+};
+
 #endif /* !defined(FF_COMMON_H) */
