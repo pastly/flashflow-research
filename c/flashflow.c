@@ -1,7 +1,6 @@
 #include<stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/time.h>
 #include <sys/select.h>
 #include <netdb.h>
 #include <string.h>
@@ -9,21 +8,12 @@
 #include <stdlib.h>
 #include <limits.h>
 
+#include "common.h"
+#include "fpfile.h"
+
 #define READ_BUF_LEN 1024*8
 #define MAX_NUM_CTRL_SOCKS 64
 #define MBITS_TO_BYTES 1000*1000/8
-
-#ifdef __APPLE__
-#define TS_FMT "%ld.%06d"
-#else
-#define TS_FMT "%ld.%06ld"
-#endif
-#define LOG(fmt, ...) \
-    do { \
-        struct timeval t; \
-        gettimeofday(&t, NULL); \
-        fprintf(stderr, "[" TS_FMT "] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
-    } while (0);
 
 struct ctrl_sock_meta {
     int fd;
@@ -375,10 +365,6 @@ main(const int argc, const char *argv[]) {
     struct timeval resp_time;
     // filename containing relay fingerprints
     const char *fp_filename = argv[1];
-    // stores result of getline() on fp_file
-    char *fp_file_line = NULL;
-    size_t fp_file_line_cap = 0;
-    ssize_t fp_file_bytes_read;
     if (argc < 7 || (argc - 4) % 3 != 0) {
         LOG("argc=%d\n", argc);
         usage();
@@ -393,12 +379,14 @@ main(const int argc, const char *argv[]) {
     const char **hostport_argv = &argv[4];
     // numer of host+port+nconn sets that are specified on the cmd line
     unsigned num_hostports = (argc - 4) / 3;
+    // the relay fp we are currently measuring, if any
+    char *fp = NULL;
     if (num_hostports > MAX_NUM_CTRL_SOCKS) {
         LOG("%u is too many tor clients, sorry.\n", num_hostports);
         ret = -1;
         goto end;
     }
-    if ((fp_file = fopen(fp_filename, "r")) == NULL) {
+    if ((fp_file = fp_file_open(fp_filename)) == NULL) {
         LOG("Unable to open %s\n", fp_filename);
         ret = -1;
         goto end;
@@ -429,24 +417,7 @@ main(const int argc, const char *argv[]) {
         ret = -1;
         goto cleanup;
     }
-    while ((fp_file_bytes_read = getline(&fp_file_line, &fp_file_line_cap, fp_file)) >= 0) {
-        // ignore empty lines
-        if (!fp_file_bytes_read)
-            continue;
-        // ignore comments
-        if (fp_file_line[0] == '#')
-            continue;
-        // ignore lines that probably aren't fingerprints
-        if ((fp_file_line[fp_file_bytes_read-1] == '\n' && fp_file_bytes_read != 41) ||
-                (fp_file_line[fp_file_bytes_read-1] != '\n' && fp_file_bytes_read == 40)) {
-            LOG("Ignoring line that doesn't look like fingerprint: \"%s\"\n", fp_file_line);
-            continue;
-        }
-        // replace newline with null
-        if (fp_file_line[fp_file_bytes_read-1] == '\n')
-            fp_file_line[fp_file_bytes_read-1] = '\0';
-        // we most likely have a fingerprint. assume we do.
-        const char *fp = fp_file_line;
+    while ((fp = fp_file_next(fp_file)) != NULL) {
         LOG("Now measuring %s\n", fp);
         // tell everyone to connect to the given fingerprint
         LOG("Telling everyone to connect to %s\n", fp);
@@ -528,11 +499,13 @@ main(const int argc, const char *argv[]) {
         }
 end_of_single_fp_loop:
         LOG("Ended with %d total results\n", total_results);
+        free(fp);
         sleep(1);
     }
 
 cleanup:
-    fclose(fp_file);
+    free(fp);
+    fp_file_close(fp_file);
     for (i = 0; i < num_ctrl_socks; i++) {
         LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);
         close(ctrl_sock_metas[i].fd);

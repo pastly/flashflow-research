@@ -1,12 +1,27 @@
 .PHONY: all clean
 
-GCC_FLAGS := -Wall -O2 -ggdb
-GCC := gcc
+CFLAGS := -Wall -O2 -ggdb
+CC := gcc
+
+SRC := \
+	flashflow.c \
+	fpfile.c \
+
+OBJ := \
+	fpfile.o \
 
 all: flashflow
 
-clean:
-	rm -fv flashflow
+include $(SRC:.c=.d)
 
-flashflow: flashflow.c
-	$(GCC) $(GCC_FLAGS) $^ -o $@
+%.d: %.c
+	set -e; rm -f $@; \
+	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
+	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
+	rm -f $@.$$$$
+
+clean:
+	rm -rf flashflow *.d *.o *.dSYM
+
+flashflow: flashflow.c $(OBJ)
+	$(CC) $(CFLAGS) $^ -o $@
