@@ -312,7 +312,7 @@ def _measure_ping(args, out_dir, i, params):
     )
     cmd = cmd.split()
     os.makedirs(out_dir, exist_ok=True)
-    out_fname = os.path.join(out_dir, 'ping.%d.txt' % i)
+    out_fname = _get_next_fname(out_dir, 'ping.{i}.txt', i)
     with open(out_fname, 'wt') as fd:
         fd.write('#\n# %s\n#\n' % str(datetime.datetime.now()))
     log.debug('Executing: %s (with %s getting output)', cmd, out_fname)
