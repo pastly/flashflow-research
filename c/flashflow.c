@@ -11,6 +11,7 @@
 
 #define READ_BUF_LEN 1024*8
 #define MAX_NUM_CTRL_SOCKS 64
+#define MBITS_TO_BYTES 1000*1000/8
 
 #ifdef __APPLE__
 #define TS_FMT "%ld.%06d"
@@ -295,6 +296,47 @@ start_measurements(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_so
     return 1;
 }
 
+int set_bandwidth_rate(const int s, const unsigned bw) {
+    char buf[READ_BUF_LEN];
+    char msg[80];
+    int len;
+    if (snprintf(msg, 80, "RESETCONF BandwidthRate=%u BandwidthBurst=%u\n", bw, bw) < 0) {
+        perror("Error snprintf RESETCONF bw rate/burst");
+        return 0;
+    }
+    const char *good_resp = "250 OK";
+    if (send(s, msg, strlen(msg), 0) < 0) {
+        perror("Error sending RESETCONF bw rate/burst message");
+        return 0;
+    }
+    if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
+        perror("Error receiving bw rate/burst response");
+        return 0;
+    }
+    if (strncmp(buf, good_resp, strlen(good_resp))) {
+        buf[len] = '\0';
+        LOG("Unknown bw rate/burst response: %s\n", buf);
+        return 0;
+    }
+    LOG("Set rate/burst to %u on fd=%d\n", bw, s);
+    return 1;
+}
+
+/*
+ * Tell each tor client over its ctrl sock to limit itself to the given number
+ * of BYTES per second. returns false if any failure, otherwise true
+ */
+int
+set_bandwidth_rates(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const unsigned bandwidths[]) {
+    int i;
+    for (i = 0; i < num_ctrl_socks; i++) {
+        if (!set_bandwidth_rate(ctrl_sock_metas[i].fd, bandwidths[i])) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int
 max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
     int the_max = INT_MIN;
@@ -310,6 +352,8 @@ main(const int argc, const char *argv[]) {
     FILE *fp_file;
     // all the socks we have to tor client ctrl ports
     struct ctrl_sock_meta ctrl_sock_metas[MAX_NUM_CTRL_SOCKS];
+    // stores bw rate limits for each socket, can change between experiments
+    unsigned bw_rate_limits[MAX_NUM_CTRL_SOCKS];
     // to tell select() all the sockets we care about reading from
     fd_set read_set;
     // the number of ctrl socks we make successfully
@@ -365,6 +409,10 @@ main(const int argc, const char *argv[]) {
         ret = -1;
         goto cleanup;
     }
+    // set dummy bw limits
+    for (i = 0; i < num_ctrl_socks; i++) {
+        bw_rate_limits[i] = 50 * MBITS_TO_BYTES;
+    }
     // print out useful info about each ctrl conn we have
     for (i = 0; i < num_ctrl_socks; i++) {
         struct ctrl_sock_meta meta = ctrl_sock_metas[i];
@@ -373,6 +421,11 @@ main(const int argc, const char *argv[]) {
     // to tell select() the max fd we care about
     const int the_max_ctrl_sock = max_ctrl_sock(ctrl_sock_metas, num_ctrl_socks);
     if (!auth_ctrl_socks(num_ctrl_socks, ctrl_sock_metas, ctrl_pw)) {
+        ret = -1;
+        goto cleanup;
+    }
+    // send dummy bw limits to clients
+    if (!set_bandwidth_rates(num_ctrl_socks, ctrl_sock_metas, bw_rate_limits)) {
         ret = -1;
         goto cleanup;
     }
