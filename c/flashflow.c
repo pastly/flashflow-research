@@ -481,7 +481,7 @@ end_of_single_fp_loop:
 cleanup:
     fclose(fp_file);
     for (i = 0; i < num_ctrl_socks; i++) {
-        LOG("Closing sock=%d\n", ctrl_sock_metas[i].fd);
+        LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);
         close(ctrl_sock_metas[i].fd);
     }
 end:
