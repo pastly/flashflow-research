@@ -310,9 +310,10 @@ main(const int argc, const char *argv[]) {
                     }
                     // output the result on stdout
                     printf(
-                        TS_FMT " %s %s:%s %s\n",
+                        TS_FMT " %s %s;%s:%s %s\n",
                         resp_time.tv_sec, resp_time.tv_usec,
                         msm_params.fp,
+                        ctrl_sock_metas[i].class,
                         ctrl_sock_metas[i].host, ctrl_sock_metas[i].port,
                         resp_buf);
                     results_since_last_logged++;
@@ -328,12 +329,10 @@ main(const int argc, const char *argv[]) {
         }
 end_of_single_fp_loop:
         LOG("Ended with %d total results\n", total_results);
-        //free(msm_params.fp);
         sleep(1);
     }
 
 cleanup:
-    //free(msm_params.fp);
     fp_file_close(fp_file);
     for (i = 0; i < num_ctrl_socks; i++) {
         LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);

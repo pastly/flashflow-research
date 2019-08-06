@@ -11,8 +11,8 @@ fp_file_open(const char *fname) {
 }
 
 /**
- * Read the next fingerprint from the fp_file and return it. NULL if error or
- * EOF. Caller must free the returned string when finished with it.
+ * Read the next valid line from fp_file and fill params with it. Returns false
+ * if error or ran out of lines, otherwise true.
  */
 int
 fp_file_next(FILE *fd, struct msm_params *params) {
