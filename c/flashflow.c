@@ -207,16 +207,13 @@ main(const int argc, const char *argv[]) {
         ret = -1;
         goto end;
     }
-    // how long the clients should measure for, in seconds
-    const unsigned dur = 10; //atoi(argv[2]);
-    // numer of host+port+nconn sets that are specified on the cmd line
+    // numer of tor clients read from client_filename. Later we'll see how many
+    // we can actually connect to
     unsigned num_tor_clients;
     if ((num_tor_clients = tc_client_file_read(client_filename, ctrl_sock_metas)) < 1) {
         ret = -1;
         goto end;
     }
-    // the relay fp we are currently measuring, if any
-    char *fp = NULL;
     if ((fp_file = fp_file_open(fp_filename)) == NULL) {
         LOG("Unable to open %s\n", fp_filename);
         ret = -1;
@@ -248,23 +245,24 @@ main(const int argc, const char *argv[]) {
         ret = -1;
         goto cleanup;
     }
-    while ((fp = fp_file_next(fp_file)) != NULL) {
-        LOG("Now measuring %s\n", fp);
+    struct msm_params msm_params;
+    while (fp_file_next(fp_file, &msm_params)) {
+        LOG("Now measuring %s\n", msm_params.fp);
         // tell everyone to connect to the given fingerprint
-        LOG("Telling everyone to connect to %s\n", fp);
-        if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, fp)) {
+        LOG("Telling everyone to connect to %s\n", msm_params.fp);
+        if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, msm_params.fp)) {
             ret = -1;
             goto cleanup;
         }
-        LOG("Everyone connected to %s\n", fp);
+        LOG("Everyone connected to %s\n", msm_params.fp);
         // tell everyone to start measuring
-        LOG("Telling everyone to measure for %d\n", dur);
-        if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, dur)) {
+        LOG("Telling everyone to measure for %d\n", msm_params.dur);
+        if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, msm_params.dur)) {
             LOG("Error starting all measurements\n");
             ret = -1;
             goto cleanup;
         }
-        LOG("Everyone got the message to measure for %d\n", dur);
+        LOG("Everyone got the message to measure for %u\n", msm_params.dur);
         // "main loop" of receiving results from the measurers
         LOG("Entering read loop\n");
         struct timeval now;
@@ -314,7 +312,7 @@ main(const int argc, const char *argv[]) {
                     printf(
                         TS_FMT " %s %s:%s %s\n",
                         resp_time.tv_sec, resp_time.tv_usec,
-                        fp,
+                        msm_params.fp,
                         ctrl_sock_metas[i].host, ctrl_sock_metas[i].port,
                         resp_buf);
                     results_since_last_logged++;
@@ -330,12 +328,12 @@ main(const int argc, const char *argv[]) {
         }
 end_of_single_fp_loop:
         LOG("Ended with %d total results\n", total_results);
-        free(fp);
+        //free(msm_params.fp);
         sleep(1);
     }
 
 cleanup:
-    free(fp);
+    //free(msm_params.fp);
     fp_file_close(fp_file);
     for (i = 0; i < num_ctrl_socks; i++) {
         LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);

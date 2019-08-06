@@ -27,4 +27,9 @@ struct ctrl_sock_meta {
     int current_measurement;
 };
 
+struct msm_params {
+    const char *fp;
+    unsigned dur;
+};
+
 #endif /* !defined(FF_COMMON_H) */
