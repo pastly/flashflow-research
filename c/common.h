@@ -28,6 +28,7 @@ struct ctrl_sock_meta {
 };
 
 struct msm_params {
+    unsigned id;
     const char *fp;
     unsigned dur;
 };

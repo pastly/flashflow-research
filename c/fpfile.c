@@ -32,6 +32,11 @@ fp_file_next(FILE *fd, struct msm_params *params) {
         // ignore empty lines and comments
         if (!bytes_read || head[0] == '#')
             goto single_loop_end;
+        char *id_str = strsep(&head, " \n");
+        if (!id_str || !strlen(head)) {
+            LOG("Ignoring invalid fp line '%s'\n", line_copy);
+            goto single_loop_end;
+        }
         char *fp = strsep(&head, " \n");
         if (!fp || !strlen(head)) {
             LOG("Ignoring invalid fp line '%s'\n", line_copy);
@@ -42,9 +47,10 @@ fp_file_next(FILE *fd, struct msm_params *params) {
             LOG("Ignoring invalid fp line '%s'\n", line_copy);
             goto single_loop_end;
         }
+        params->id = atoi(id_str);
         params->fp = fp;
         params->dur = atoi(dur_str);
-        LOG("fp=%s dur=%u\n", params->fp, params->dur);
+        LOG("id=%u fp=%s dur=%u\n", params->id, params->fp, params->dur);
         free(line_copy);
         return 1;
 single_loop_end:
