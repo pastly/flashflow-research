@@ -6,11 +6,11 @@ CC := gcc
 SRC := \
 	flashflow.c \
 	fpfile.c \
-	clientfile.c \
+	torclient.c \
 
 OBJ := \
 	fpfile.o \
-	clientfile.o \
+	torclient.o \
 
 all: flashflow
 

@@ -3,6 +3,8 @@
 
 #include <sys/time.h>
 
+#define READ_BUF_LEN 1024*8
+
 #ifdef __APPLE__
 #define TS_FMT "%ld.%06d"
 #else
@@ -17,10 +19,12 @@
 
 struct ctrl_sock_meta {
     int fd;
+    const char *class;
     const char *host;
     const char *port;
     const char *pw;
     int nconns;
+    int current_measurement;
 };
 
 #endif /* !defined(FF_COMMON_H) */
