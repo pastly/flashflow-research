@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import sys
-import lzma
+from subprocess import Popen, PIPE
 
 
 def log(*a, **kw):
@@ -9,39 +9,39 @@ def log(*a, **kw):
 
 def data_iter(fd):
     for line in fd:
+        line = line.strip()
         words = line.split()
-        if len(words) != 7:
-            log('Ignoring short line: "%s"' % line)
+        if len(words) != 8:
+            log('Ignoring short/long line: "%s"' % line)
             continue
         try:
             t = float(words[0])
         except Exception:
             log('Bad timestsamp:', words[0])
             continue
-        hostport = words[2]
-        if words[3] != '650':
+        hostport = words[3].split(';')[1]
+        if words[4] != '650':
             # first line will be 250, don't log if so
-            if words[3] != '250':
-                log('words[3] should be 650')
+            if words[4] != '250':
+                log('words[4] should be 650')
             continue
-        if words[4] != 'SPEEDTESTING':
-            log('words[4] should be SPEEDTESTING')
-            continue
-        try:
-            bw_down = int(words[5])
-        except Exception:
-            log('Bad bw:', words[5])
+        if words[5] != 'SPEEDTESTING':
+            log('words[5] should be SPEEDTESTING')
             continue
         try:
-            bw_up = int(words[6])
+            bw_down = int(words[6])
         except Exception:
             log('Bad bw:', words[6])
+            continue
+        try:
+            bw_up = int(words[7])
+        except Exception:
+            log('Bad bw:', words[7])
             continue
         yield t, hostport, bw_down, bw_up
 
 
 def do(fd):
-    start = None
     out_data = {}
     for t, _, bw_down, bw_up in data_iter(fd):
         if int(t) not in out_data:
@@ -51,13 +51,12 @@ def do(fd):
         down = sum(item['d'] for item in out_data[t])
         up = sum(item['u'] for item in out_data[t])
         print(t, down, up)
-        
 
 
 def main():
     for fname in sys.argv[1:]:
         if fname.endswith('.xz'):
-            fd = lzma.open(fname, 'rt')
+            fd = Popen(['xzcat', fname], stdout=PIPE, text=True).stdout
         else:
             fd = open(fname, 'rt')
         do(fd)

@@ -83,6 +83,7 @@ connect_target(const int s, const  char *fp, const unsigned num_conns) {
         LOG("Unknown connect_target() response: %s\n", buf);
         return 0;
     }
+    LOG("fd=%d connected to %s with %u conns\n", s, fp, num_conns);
     return 1;
 }
 
@@ -134,12 +135,11 @@ read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
  * false if any failure, otherwise true.
  */
 int
-connect_target_all(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const char *fp) {
+connect_target_all(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const unsigned m_nconn[], const char *fp) {
     int i;
     for (i = 0; i < num_ctrl_socks; i++) {
         int fd = ctrl_sock_metas[i].fd;
-        int nconns = ctrl_sock_metas[i].nconns;
-        if (!connect_target(fd, fp, nconns)) {
+        if (!connect_target(fd, fp, m_nconn[i])) {
             return 0;
         }
     }
@@ -177,8 +177,6 @@ main(const int argc, const char *argv[]) {
     FILE *fp_file;
     // all the socks we have to tor client ctrl ports
     struct ctrl_sock_meta ctrl_sock_metas[MAX_NUM_CTRL_SOCKS];
-    // stores bw rate limits for each socket, can change between experiments
-    unsigned bw_rate_limits[MAX_NUM_CTRL_SOCKS];
     // to tell select() all the sockets we care about reading from
     fd_set read_set;
     // the number of ctrl socks we make successfully
@@ -225,23 +223,14 @@ main(const int argc, const char *argv[]) {
         ret = -1;
         goto cleanup;
     }
-    // set dummy bw limits
-    for (i = 0; i < num_ctrl_socks; i++) {
-        bw_rate_limits[i] = 1000 * MBITS_TO_BYTES;
-    }
     // print out useful info about each ctrl conn we have
     for (i = 0; i < num_ctrl_socks; i++) {
         struct ctrl_sock_meta meta = ctrl_sock_metas[i];
-        LOG("using %s:%s fd=%d nconns=%d\n", meta.host, meta.port, meta.fd, meta.nconns);
+        LOG("using %s:%s fd=%d\n", meta.host, meta.port, meta.fd);
     }
     // to tell select() the max fd we care about
     const int the_max_ctrl_sock = max_ctrl_sock(ctrl_sock_metas, num_ctrl_socks);
     if (!tc_auth_sockets(num_ctrl_socks, ctrl_sock_metas)) {
-        ret = -1;
-        goto cleanup;
-    }
-    // send dummy bw limits to clients
-    if (!tc_set_bw_rates(num_ctrl_socks, ctrl_sock_metas, bw_rate_limits)) {
         ret = -1;
         goto cleanup;
     }
@@ -250,19 +239,24 @@ main(const int argc, const char *argv[]) {
         LOG("Now measuring %s\n", msm_params.fp);
         // tell everyone to connect to the given fingerprint
         LOG("Telling everyone to connect to %s\n", msm_params.fp);
-        if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, msm_params.fp)) {
+        if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, msm_params.m_nconn, msm_params.fp)) {
             ret = -1;
             goto cleanup;
         }
         LOG("Everyone connected to %s\n", msm_params.fp);
+        if (!tc_set_bw_rates(num_ctrl_socks, ctrl_sock_metas, msm_params.m_bw)) {
+            LOG("Error telling all measurers to set their bw rates\n");
+            ret = -1;
+            goto cleanup;
+        }
         // tell everyone to start measuring
-        LOG("Telling everyone to measure for %d\n", msm_params.dur);
+        LOG("Telling everyone to measure for %u seconds\n", msm_params.dur);
         if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, msm_params.dur)) {
             LOG("Error starting all measurements\n");
             ret = -1;
             goto cleanup;
         }
-        LOG("Everyone got the message to measure for %u\n", msm_params.dur);
+        LOG("Everyone got the message to measure for %u seconds\n", msm_params.dur);
         // "main loop" of receiving results from the measurers
         LOG("Entering read loop\n");
         struct timeval now;
@@ -328,6 +322,7 @@ main(const int argc, const char *argv[]) {
             }
         }
 end_of_single_fp_loop:
+        free_msm_params(msm_params);
         LOG("Ended with %d total results\n", total_results);
         sleep(1);
     }
@@ -337,6 +332,7 @@ cleanup:
     for (i = 0; i < num_ctrl_socks; i++) {
         LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);
         close(ctrl_sock_metas[i].fd);
+        free_ctrl_sock_meta(ctrl_sock_metas[i]);
     }
 end:
     return ret;

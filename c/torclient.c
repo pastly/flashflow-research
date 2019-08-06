@@ -27,7 +27,6 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
     int count = 0;
     while (count < MAX_NUM_CTRL_SOCKS) {
         bytes_read = getline(&line, &cap, fd);
-        char *line_copy = strdup(line);
         if (bytes_read < 0) {
             if (errno) {
                 perror("Error getting line from client file");
@@ -35,26 +34,27 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
             return count;
         }
         if (!bytes_read || line[0] == '#')
-            goto single_loop_end;
-        char *class = strsep(&line, " ");
-        if (!class || !strlen(line)) {
-            LOG("Ignoring invalid client file line: '%s'\n", line_copy);
-            goto single_loop_end;
-        }
-        char *host = strsep(&line, " ");
-        if (!host || !strlen(line)) {
-            LOG("Ignoring invalid client file line: '%s'\n", line_copy);
-            goto single_loop_end;
-        }
-        char *port = strsep(&line, " ");
-        if (!port || !strlen(line)) {
-            LOG("Ignoring invalid client file line: '%s'\n", line_copy);
-            goto single_loop_end;
-        }
-        char *pw = strsep(&line, " \n");
-        if (!pw || strlen(line)) {
-            LOG("Ignoring invalid client file line: '%s'\n", line_copy);
-            goto single_loop_end;
+            continue;
+        char *token, *head, *tofree;
+        char *class = NULL, *host = NULL, *port = NULL, *pw = NULL;
+        int token_num = 0;
+        tofree = head = strdup(line);
+        while ((token = strsep(&head, " \n"))) {
+            if (!strlen(token))
+                continue;
+            switch (token_num) {
+                case 0: class = strdup(token); break;
+                case 1: host = strdup(token); break;
+                case 2: port = strdup(token); break;
+                case 3: pw = strdup(token); break;
+                default:
+                    free(class);
+                    free(host);
+                    free(port);
+                    free(pw);
+                    break;
+            }
+            token_num++;
         }
         LOG("read client config class='%s' host='%s' port='%s' pw='%s'\n", class, host, port, pw);
         metas[count].fd = -1;
@@ -62,12 +62,10 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
         metas[count].host = host;
         metas[count].port = port;
         metas[count].pw = pw;
-        metas[count].nconns = 1;
         metas[count].current_measurement = -1;
         count++;
-single_loop_end:
-        free(line_copy);
     }
+    free(line);
     return count;
 }
 

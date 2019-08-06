@@ -7,10 +7,12 @@ SRC := \
 	flashflow.c \
 	fpfile.c \
 	torclient.c \
+	common.c \
 
 OBJ := \
 	fpfile.o \
 	torclient.o \
+	common.o \
 
 all: flashflow
 
