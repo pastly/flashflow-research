@@ -310,9 +310,9 @@ main(const int argc, const char *argv[]) {
                     }
                     // output the result on stdout
                     printf(
-                        TS_FMT " %s %s;%s:%s %s\n",
+                        TS_FMT " %u %s %s;%s:%s %s\n",
                         resp_time.tv_sec, resp_time.tv_usec,
-                        msm_params.fp,
+                        msm_params.id, msm_params.fp,
                         ctrl_sock_metas[i].class,
                         ctrl_sock_metas[i].host, ctrl_sock_metas[i].port,
                         resp_buf);
