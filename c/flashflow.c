@@ -11,6 +11,7 @@
 #include "common.h"
 #include "fpfile.h"
 #include "torclient.h"
+#include "sched.h"
 
 #define MBITS_TO_BYTES 1000*1000/8
 
@@ -174,6 +175,8 @@ max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
 
 int
 main(const int argc, const char *argv[]) {
+    rust_hello();
+    return 0;
     FILE *fp_file;
     // all the socks we have to tor client ctrl ports
     struct ctrl_sock_meta ctrl_sock_metas[MAX_NUM_CTRL_SOCKS];

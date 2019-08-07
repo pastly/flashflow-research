@@ -1,13 +1,26 @@
 .PHONY: all clean
 
+PLATFORM := $(shell uname)
+
 CFLAGS := -Wall -O2 -ggdb -std=gnu99
 CC := gcc
 
+RS_SRC := \
+	sched/src/*.rs \
+
+ifeq ($(PLATFORM),Darwin)
+RS_LIB := \
+	sched/target/release/libsched.dylib
+else
+RS_LIB := \
+	sched/target/release/libsched.so
+endif
+
 SRC := \
-	flashflow.c \
 	fpfile.c \
 	torclient.c \
 	common.c \
+	#flashflow.c \
 
 OBJ := \
 	fpfile.o \
@@ -18,6 +31,10 @@ all: flashflow
 
 include $(SRC:.c=.d)
 
+sched.h: sched/src/*.rs
+	cd sched && \
+	cbindgen --lang C --crate sched --output ../$@
+
 %.d: %.c
 	set -e; rm -f $@; \
 	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
@@ -25,7 +42,11 @@ include $(SRC:.c=.d)
 	rm -f $@.$$$$
 
 clean:
-	rm -rf flashflow *.d *.o *.dSYM
+	rm -rf flashflow *.d *.d.* *.o *.dSYM sched.h
 
-flashflow: flashflow.c $(OBJ)
-	$(CC) $(CFLAGS) $^ -o $@
+$(RS_LIB): $(RS_SRC)
+	cd sched && \
+	cargo build --release
+
+flashflow: flashflow.c $(OBJ) sched.h $(RS_LIB)
+	$(CC) $(CFLAGS) flashflow.c $(OBJ) -o $@ -lsched -L./sched/target/release
