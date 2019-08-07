@@ -1,6 +1,6 @@
 .PHONY: all clean
 
-CFLAGS := -Wall -O2 -ggdb
+CFLAGS := -Wall -O2 -ggdb -std=gnu99
 CC := gcc
 
 SRC := \
