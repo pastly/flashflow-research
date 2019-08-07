@@ -6,3 +6,5 @@ flashflow
 *.o
 flashflow-torrc-*
 flashflow-tordata-*
+target/
+sched.h

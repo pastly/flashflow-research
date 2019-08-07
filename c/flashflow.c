@@ -175,7 +175,15 @@ max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
 
 int
 main(const int argc, const char *argv[]) {
-    rust_hello();
+    sched_new("fps.txt");
+    uint32_t m_id;
+    while (!sched_finished()) {
+        m_id = sched_next();
+        printf("Got %u. Working on it ...\n", m_id);
+        printf("Marking %u as done.\n", m_id);
+        sched_mark_done(m_id);
+        printf("%lu remaining\n", sched_num_incomplete());
+    }
     return 0;
     FILE *fp_file;
     // all the socks we have to tor client ctrl ports

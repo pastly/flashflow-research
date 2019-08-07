@@ -33,7 +33,8 @@ include $(SRC:.c=.d)
 
 sched.h: sched/src/*.rs
 	cd sched && \
-	cbindgen --lang C --crate sched --output ../$@
+	cbindgen --lang C --crate sched --output ../$@ || \
+	rustc -Z parse-only ../$^
 
 %.d: %.c
 	set -e; rm -f $@; \
