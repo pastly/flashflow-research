@@ -56,6 +56,7 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
             }
             token_num++;
         }
+        free(tofree);
         LOG("read client config class='%s' host='%s' port='%s' pw='%s'\n", class, host, port, pw);
         metas[count].fd = -1;
         metas[count].class = class;
