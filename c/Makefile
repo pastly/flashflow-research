@@ -11,9 +11,12 @@ RS_SRC := \
 ifeq ($(PLATFORM),Darwin)
 RS_LIB := \
 	sched/target/release/libsched.dylib
+EXTRA_ARGS :=
 else
 RS_LIB := \
 	sched/target/release/libsched.so
+EXTRA_ARGS := \
+	-Wl,-rpath,\$$ORIGIN/sched/target/release
 endif
 
 SRC := \
@@ -48,4 +51,4 @@ $(RS_LIB): $(RS_SRC)
 	cargo build --release
 
 flashflow: flashflow.c $(OBJ) sched.h $(RS_LIB)
-	$(CC) $(CFLAGS) flashflow.c $(OBJ) -o $@ -lsched -L./sched/target/release
+	$(CC) $(CFLAGS) flashflow.c $(OBJ) -o $@ -lsched -L./sched/target/release $(EXTRA_ARGS)
