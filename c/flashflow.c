@@ -180,6 +180,16 @@ main(const int argc, const char *argv[]) {
     while (!sched_finished()) {
         m_id = sched_next();
         printf("Got %u. Working on it ...\n", m_id);
+        printf("%u is to measure %s for %u secs\n", m_id, sched_get_fp(m_id), sched_get_dur(m_id));
+        size_t num_hosts;
+        char **classes = NULL;
+        uint32_t *bws = NULL;
+        uint32_t *conns = NULL;
+        num_hosts = sched_get_hosts(m_id, &classes, &bws, &conns);
+        for (int i = 0; i < num_hosts; i++) {
+            printf("    class='%s' bw=%u conns=%u\n", classes[i], bws[i], conns[i]);
+        }
+        sched_free_hosts(classes, bws, conns, num_hosts);
         printf("Marking %u as done.\n", m_id);
         sched_mark_done(m_id);
         printf("%lu remaining\n", sched_num_incomplete());

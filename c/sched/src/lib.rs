@@ -7,10 +7,11 @@ use libc::c_char;
 use serde::{Deserialize, Serialize};
 use std::collections::hash_map::RandomState;
 use std::collections::{HashMap, HashSet};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
 use std::iter::FromIterator;
+use std::mem;
 use std::sync::Mutex;
 
 lazy_static! {
@@ -27,6 +28,18 @@ pub struct Measurement {
     hosts: Vec<Host>,
     depends: Vec<u32>,
     finished_depends: Vec<u32>,
+}
+
+#[no_mangle]
+pub extern "C" fn sched_get_fp(m_id: u32) -> *const c_char {
+    CString::new(MSMS.lock().unwrap().get(&m_id).unwrap().fp.clone())
+        .expect("Unable to make fp cstring")
+        .into_raw()
+}
+
+#[no_mangle]
+pub extern "C" fn sched_get_dur(m_id: u32) -> u32 {
+    MSMS.lock().unwrap().get(&m_id).unwrap().dur
 }
 
 //#[repr(C)]
@@ -140,10 +153,10 @@ pub extern "C" fn sched_new(fname: *const c_char) -> usize {
         let mut msms = MSMS.lock().unwrap();
         for m in measurements {
             //println!("{:?}", &m);
-            println!("{}", serde_json::to_string(&m).unwrap());
-            let m2: Measurement =
-                serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
-            println!("{:?}", m2);
+            //println!("{}", serde_json::to_string(&m).unwrap());
+            //let m2: Measurement =
+            //    serde_json::from_str(&serde_json::to_string(&m).unwrap()).unwrap();
+            //println!("{:?}", m2);
             msms.insert(m.id, m);
         }
     }
@@ -203,5 +216,62 @@ pub extern "C" fn sched_mark_done(m_id: u32) {
         if m.depends.contains(&m_id) {
             m.finished_depends.push(m_id);
         }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn sched_get_hosts(
+    m_id: u32,
+    out_classes: *mut *mut *mut c_char,
+    out_bws: *mut *mut u32,
+    out_conns: *mut *mut u32,
+) -> usize {
+    let msms = MSMS.lock().unwrap();
+    let m = msms.get(&m_id).unwrap();
+    let mut classes = vec![];
+    let mut bws = vec![];
+    let mut conns = vec![];
+    for h in &m.hosts {
+        classes.push(
+            CString::new(h.class.clone())
+                .expect("Unable to make host cstring")
+                .into_raw(),
+        );
+        bws.push(h.bw);
+        conns.push(h.conns);
+    }
+    assert_eq!(classes.len(), m.hosts.len());
+    assert_eq!(bws.len(), m.hosts.len());
+    assert_eq!(conns.len(), m.hosts.len());
+    classes.shrink_to_fit();
+    bws.shrink_to_fit();
+    conns.shrink_to_fit();
+    assert_eq!(classes.len(), classes.capacity());
+    assert_eq!(bws.len(), bws.capacity());
+    assert_eq!(conns.len(), conns.capacity());
+    unsafe {
+        *out_classes = classes.as_mut_ptr();
+        *out_bws = bws.as_mut_ptr();
+        *out_conns = conns.as_mut_ptr();
+    }
+    mem::forget(classes);
+    mem::forget(bws);
+    mem::forget(conns);
+    m.hosts.len()
+}
+
+#[no_mangle]
+pub extern "C" fn sched_free_hosts(
+    classes: *mut *mut c_char,
+    bws: *mut u32,
+    conns: *mut u32,
+    count: usize,
+) {
+    unsafe {
+        for item in Vec::from_raw_parts(classes, count, count) {
+            CString::from_raw(item);
+        }
+        Vec::from_raw_parts(bws, count, count);
+        Vec::from_raw_parts(conns, count, count);
     }
 }
