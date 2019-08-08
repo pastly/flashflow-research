@@ -1,4 +1,4 @@
-#include<stdio.h>
+#include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -7,9 +7,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <assert.h>
 
 #include "common.h"
-#include "fpfile.h"
 #include "torclient.h"
 #include "sched.h"
 
@@ -175,27 +175,6 @@ max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
 
 int
 main(const int argc, const char *argv[]) {
-    sched_new("fps.txt");
-    uint32_t m_id;
-    while (!sched_finished()) {
-        m_id = sched_next();
-        printf("Got %u. Working on it ...\n", m_id);
-        printf("%u is to measure %s for %u secs\n", m_id, sched_get_fp(m_id), sched_get_dur(m_id));
-        size_t num_hosts;
-        char **classes = NULL;
-        uint32_t *bws = NULL;
-        uint32_t *conns = NULL;
-        num_hosts = sched_get_hosts(m_id, &classes, &bws, &conns);
-        for (int i = 0; i < num_hosts; i++) {
-            printf("    class='%s' bw=%u conns=%u\n", classes[i], bws[i], conns[i]);
-        }
-        sched_free_hosts(classes, bws, conns, num_hosts);
-        printf("Marking %u as done.\n", m_id);
-        sched_mark_done(m_id);
-        printf("%lu remaining\n", sched_num_incomplete());
-    }
-    return 0;
-    FILE *fp_file;
     // all the socks we have to tor client ctrl ports
     struct ctrl_sock_meta ctrl_sock_metas[MAX_NUM_CTRL_SOCKS];
     // to tell select() all the sockets we care about reading from
@@ -233,9 +212,8 @@ main(const int argc, const char *argv[]) {
         ret = -1;
         goto end;
     }
-    if ((fp_file = fp_file_open(fp_filename)) == NULL) {
-        LOG("Unable to open %s\n", fp_filename);
-        ret = -1;
+    if (!sched_new(fp_filename)) {
+        LOG("Empty schedule from %s, nothing to do\n", fp_filename);
         goto end;
     }
     // make all the socks to tor clients
@@ -256,8 +234,17 @@ main(const int argc, const char *argv[]) {
         goto cleanup;
     }
     struct msm_params msm_params;
-    while (fp_file_next(fp_file, &msm_params)) {
-        LOG("Now measuring %s\n", msm_params.fp);
+    while (!sched_finished()) {
+        msm_params.id = sched_next();
+        assert(msm_params.id);
+        msm_params.dur = sched_get_dur(msm_params.id);
+        msm_params.fp = sched_get_fp(msm_params.id);
+        msm_params.num_m = sched_get_hosts(msm_params.id, &msm_params.m, &msm_params.m_bw, &msm_params.m_nconn);
+
+        LOG("Now measuring %s for %us with ...\n", msm_params.fp, msm_params.dur);
+        for (int i = 0; i < msm_params.num_m; i++) {
+            LOG("    %s bw=%u conns=%u\n", msm_params.m[i], msm_params.m_bw[i], msm_params.m_nconn[i]);
+        }
         // tell everyone to connect to the given fingerprint
         LOG("Telling everyone to connect to %s\n", msm_params.fp);
         if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, msm_params.m_nconn, msm_params.fp)) {
@@ -343,13 +330,13 @@ main(const int argc, const char *argv[]) {
             }
         }
 end_of_single_fp_loop:
-        free_msm_params(msm_params);
+        sched_free_hosts(msm_params.m, msm_params.m_bw, msm_params.m_nconn, msm_params.num_m);
+        sched_mark_done(msm_params.id);
         LOG("Ended with %d total results\n", total_results);
         sleep(1);
     }
 
 cleanup:
-    fp_file_close(fp_file);
     for (i = 0; i < num_ctrl_socks; i++) {
         LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);
         close(ctrl_sock_metas[i].fd);

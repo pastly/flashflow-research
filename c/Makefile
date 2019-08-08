@@ -17,13 +17,11 @@ RS_LIB := \
 endif
 
 SRC := \
-	fpfile.c \
 	torclient.c \
 	common.c \
 	#flashflow.c \
 
 OBJ := \
-	fpfile.o \
 	torclient.o \
 	common.o \
 
@@ -43,7 +41,7 @@ sched.h: sched/src/*.rs
 	rm -f $@.$$$$
 
 clean:
-	rm -rf flashflow *.d *.d.* *.o *.dSYM sched.h
+	rm -rf flashflow *.d *.d.* *.o *.dSYM sched.h $(RS_LIB)
 
 $(RS_LIB): $(RS_SRC)
 	cd sched && \
