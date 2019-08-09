@@ -1,4 +1,4 @@
-from ..lib.chunkpayloads import MeasureResult, PingMeasureResult, BwMeasureResult
+from ..lib.chunkpayloads import PingMeasureResult, BwMeasureResult
 from statistics import median
 import logging
 
@@ -78,6 +78,7 @@ def get_bw_results(results):
         ret[m] = [r for r in results[m] if isinstance(r, BwMeasureResult)]
     return ret
 
+
 def num_covered_report_intervals(results, min_report_interval=1):
     '''
     Determine the minimum number of report intervals covered by each measurer's
@@ -110,7 +111,7 @@ def num_covered_report_intervals(results, min_report_interval=1):
 
 
 def _one_measurer_bandwidth_during_window(
-        measurer_bw_results, start_time, end_time):
+        measurer_bw_results, start_time, end_time, use_medians):
     '''
     '''
     window_size = end_time - start_time
@@ -122,34 +123,39 @@ def _one_measurer_bandwidth_during_window(
     earliest_start = kept_results[0].start
     latest_end = kept_results[-1].end
     actual_duration = latest_end - earliest_start
-    transferred_bytes = sum([r.amount for r in kept_results])
-    adjusted_bytes = transferred_bytes * window_size / actual_duration
-    res = BwMeasureResult(start_time, end_time, adjusted_bytes, None)
-    log.debug(
-        'Calculated measurer bw of %f Mbps over %d/%d of its reported '
-        'results. This represents %f seconds (t=%f-%fs), and the target '
-        'window_size is %f seconds (t=%f-%fs).',
-        res.bandwidth_bits(units='M'),
-        len(kept_results), len(measurer_bw_results), actual_duration,
-        earliest_start-measurer_bw_results[0].start,
-        latest_end-measurer_bw_results[0].start,
-        window_size,
-        start_time-measurer_bw_results[0].start,
-        end_time-measurer_bw_results[0].start)
-    return res
+    if not use_medians:
+        transferred_bytes = sum([r.amount for r in kept_results])
+        adjusted_bytes = transferred_bytes * window_size / actual_duration
+        res = BwMeasureResult(start_time, end_time, adjusted_bytes, None)
+        log.debug(
+            'Calculated measurer bw of %f Mbps over %d/%d of its reported '
+            'results. This represents %f seconds (t=%f-%fs), and the target '
+            'window_size is %f seconds (t=%f-%fs).',
+            res.bandwidth_bits(units='M'),
+            len(kept_results), len(measurer_bw_results), actual_duration,
+            earliest_start-measurer_bw_results[0].start,
+            latest_end-measurer_bw_results[0].start,
+            window_size,
+            start_time-measurer_bw_results[0].start,
+            end_time-measurer_bw_results[0].start)
+        return res
+    else:
+        med_bw = median([res.bandwidth() for res in kept_results])
+        num_bytes = window_size * med_bw
+        res = BwMeasureResult(start_time, end_time, num_bytes, None)
+        return res
 
 
-def all_measurer_bandwidth_during_window(bw_results, start_time, end_time):
-    '''
-    '''
+def all_measurer_bandwidth_during_window(
+        bw_results, start_time, end_time, use_medians):
     indiv_results = []
     for m in bw_results:
         indiv_results.append(_one_measurer_bandwidth_during_window(
-            bw_results[m], start_time, end_time))
+            bw_results[m], start_time, end_time, use_medians))
     amount = sum([r.amount for r in indiv_results])
     if amount == 0:
-        amount = 0.0000001  # small but non-zero amount to avoid divide-by-zero
-                            # errors elsewhere
+        # small but non-zero amount to avoid divide-by-zero errors elsewhere
+        amount = 0.0000001
     res = BwMeasureResult(start_time, end_time, amount, None)
     log.debug(
         'Calculated total bandwidth of %f Mbps over %f seconds',
@@ -160,7 +166,7 @@ def all_measurer_bandwidth_during_window(bw_results, start_time, end_time):
 def results_are_steady(
         results, allowed_change=0.01, window_decay_factor=0.5,
         steady_report_intervals=5,
-        min_report_interval=1):
+        min_report_interval=1, use_medians=False):
     '''
     Given a dictionary of results (keys: someething representing measurers,
     values: a list of Ping- and BwMeasureResults), determine if the bandwidth
@@ -245,8 +251,8 @@ def results_are_steady(
         window_size = (max_duration - gap_at_end) * (1 - window_decay_factor)
         this_end_time = end_time - gap_at_end
         this_start_time = this_end_time - window_size
-        arg_sets.append((bw_results, this_start_time, this_end_time))
-
+        arg_sets.append((
+            bw_results, this_start_time, this_end_time, use_medians))
 
     aggregate_bandwidths = []
     for args in arg_sets:
@@ -262,13 +268,14 @@ def results_are_steady(
         change_fract = 1 - (new_bw / last_bw)
         if change_fract > allowed_change or change_fract < -1 * allowed_change:
             log.debug(
-                '%f Mbps to %f Mbps is too big a change (%f%%). Not steady yet',
+                '%f Mbps to %f Mbps is too big a change (%f%%). '
+                'Not steady yet',
                 last_bw, new_bw, change_fract * 100)
             return False, None
         else:
             log.debug(
                 '%f Mbps to %f Mbps is fine (%f%%) ...',
-                last_bw, new_bw, change_fract *100)
+                last_bw, new_bw, change_fract * 100)
         last_idx = i
     res = aggregate_bandwidths[-1]
     log.debug(
@@ -278,6 +285,7 @@ def results_are_steady(
         res.end - start_time
     )
     return True, res
+
 
 def trickle_results(results):
     '''
