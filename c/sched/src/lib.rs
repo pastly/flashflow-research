@@ -81,7 +81,8 @@ impl Measurement {
                 1 => fp = sub.to_string(),
                 2 => dur = sub.parse().unwrap(),
                 3 => host_class = sub.split(',').collect(),
-                4 => host_bw = sub.split(',').map(|i| i.parse::<u32>().unwrap() * 1000 * 1000 / 8).collect(),
+                4 => host_bw = sub.split(',').map(|i| i.parse::<u32>().unwrap()).collect(),
+                //4 => host_bw = sub.split(',').map(|i| i.parse::<u32>().unwrap() * 1000 * 1000 / 8).collect(),
                 5 => host_conns = sub.split(',').map(|i| i.parse().unwrap()).collect(),
                 6 => {
                     depends = sub
