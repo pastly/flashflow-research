@@ -15,7 +15,7 @@
     do { \
         struct timeval t; \
         gettimeofday(&t, NULL); \
-        fprintf(stderr, "[" TS_FMT "] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
+        fprintf(stderr, "[" TS_FMT "] [%s@%s:%d] " fmt, t.tv_sec, t.tv_usec, __func__, __FILE__, __LINE__, ##__VA_ARGS__); \
     } while (0);
 
 enum csm_state {
@@ -23,8 +23,12 @@ enum csm_state {
     csm_st_connected,
     csm_st_authing,
     csm_st_authed,
-    csm_st_told_connect,
+    csm_st_told_connect_target,
+    csm_st_connected_target,
+    csm_st_setting_bw,
+    csm_st_bw_set,
     csm_st_measuring,
+    csm_st_done,
 };
 
 struct ctrl_sock_meta {

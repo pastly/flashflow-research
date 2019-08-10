@@ -41,13 +41,37 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_authed:
             switch (new_state) {
-                case csm_st_told_connect:
+                case csm_st_told_connect_target:
                     goto tc_good_state_change; break;
                 default:
                     goto tc_bad_state_change; break;
             };
             break;
-        case csm_st_told_connect:
+        case csm_st_told_connect_target:
+            switch (new_state) {
+                case csm_st_connected_target:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        case csm_st_connected_target:
+            switch (new_state) {
+                case csm_st_setting_bw:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        case csm_st_setting_bw:
+            switch (new_state) {
+                case csm_st_bw_set:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        case csm_st_bw_set:
             switch (new_state) {
                 case csm_st_measuring:
                     goto tc_good_state_change; break;
@@ -55,6 +79,21 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
                     goto tc_bad_state_change; break;
             };
             break;
+        case csm_st_measuring:
+            switch (new_state) {
+                case csm_st_done:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        case csm_st_done:
+            switch (new_state) {
+                case csm_st_invalid:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            }
         default:
             LOG("Invalid old_state=%s\n", csm_st_str(old_state));
             assert(0);
@@ -141,6 +180,7 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
  */
 int
 tc_make_socket(struct ctrl_sock_meta *meta) {
+    tc_assert_state(meta, csm_st_invalid);
     int s;
     struct addrinfo hints, *addr;
     s = socket(PF_INET, SOCK_STREAM, 0);
@@ -173,10 +213,11 @@ tc_make_socket(struct ctrl_sock_meta *meta) {
  */
 int
 tc_auth_socket(struct ctrl_sock_meta *meta) {
+    tc_assert_state(meta, csm_st_connected);
     char msg[80];
     int s = meta->fd;
     const char *ctrl_pw = meta->pw;
-    assert(meta->state == csm_st_connected);
+    tc_assert_state(meta, csm_st_connected);
     if (!ctrl_pw)
         ctrl_pw = "";
     if (snprintf(msg, 80, "AUTHENTICATE \"%s\"\n", ctrl_pw) < 0) {
@@ -187,62 +228,161 @@ tc_auth_socket(struct ctrl_sock_meta *meta) {
         perror("Error sending auth message");
         return 0;
     }
+    //LOG("Sent auth message '%s' to %d\n", msg, s);
     tc_change_state(meta, csm_st_authing);
-    return 1;
-    //char buf[READ_BUF_LEN];
-    //int len;
-    //const char *good_resp = "250 OK";
-    //if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
-    //    perror("Error receiving auth response");
-    //    return 0;
-    //}
-    //if (strncmp(buf, good_resp, strlen(good_resp))) {
-    //    buf[len] = '\0';
-    //    LOG("Unknown auth response: %s\n", buf);
-    //    return 0;
-    //}
-    ////printf("Auth response: %d %s\n", len, buf);
-    //return 1;
-}
-
-int
-tc_set_bw_rate(const int s, const unsigned bw) {
-    char buf[READ_BUF_LEN];
-    char msg[80];
-    int len;
-    if (snprintf(msg, 80, "RESETCONF BandwidthRate=%u BandwidthBurst=%u\n", bw, bw) < 0) {
-        perror("Error snprintf RESETCONF bw rate/burst");
-        return 0;
-    }
-    const char *good_resp = "250 OK";
-    if (send(s, msg, strlen(msg), 0) < 0) {
-        perror("Error sending RESETCONF bw rate/burst message");
-        return 0;
-    }
-    if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
-        perror("Error receiving bw rate/burst response");
-        return 0;
-    }
-    if (strncmp(buf, good_resp, strlen(good_resp))) {
-        buf[len] = '\0';
-        LOG("Unknown bw rate/burst response: %s\n", buf);
-        return 0;
-    }
-    LOG("Set rate/burst to %u on fd=%d\n", bw, s);
     return 1;
 }
 
 /**
- * Tell each tor client over its ctrl sock to limit itself to the given number
- * of BYTES per second. returns false if any failure, otherwise true
+ * read auth response from tor. returns true if good response, else false.
  */
 int
-tc_set_bw_rates(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const unsigned bws[]) {
-    int i;
-    for (i = 0; i < num_ctrl_socks; i++) {
-        if (!tc_set_bw_rate(ctrl_sock_metas[i].fd, bws[i])) {
-            return 0;
-        }
+tc_authed_socket(struct ctrl_sock_meta *meta) {
+    tc_assert_state(meta, csm_st_authing);
+    char buf[READ_BUF_LEN];
+    int len;
+    const char *good_resp = "250 OK";
+    if ((len = recv(meta->fd, buf, READ_BUF_LEN, 0)) < 0) {
+        perror("Error receiving auth response");
+        return 0;
+    }
+    if (strncmp(buf, good_resp, strlen(good_resp))) {
+        buf[len] = '\0';
+        LOG("Unknown auth response: %s\n", buf);
+        return 0;
+    }
+    tc_change_state(meta, csm_st_authed);
+    return 1;
+}
+
+/**
+ * tell an authed tor client to connect to the given relay fp
+ */
+int
+tc_tell_connect(struct ctrl_sock_meta *meta, const char *fp, const unsigned conns) {
+    LOG("Telling %s (%s:%s) to connect to %s with %u conns\n", meta->class, meta->host, meta->port, fp, conns);
+    tc_assert_state(meta, csm_st_authed);
+    const int buf_size = 1024;
+    char msg[buf_size];
+    if (snprintf(msg, buf_size, "TESTSPEED %s %u\n", fp, conns) < 0) {
+        LOG("Error making msg in tc_tell_connect()");
+        return 0;
+    }
+    if (send(meta->fd, msg, strlen(msg), 0) < 0) {
+        perror("Error sending msg in tc_tell_connect()");
+        return 0;
+    }
+    tc_change_state(meta, csm_st_told_connect_target);
+    return 1;
+}
+
+/**
+ * read connected-to-target response from tor. returns true if good, else false
+ */
+int
+tc_connected_socket(struct ctrl_sock_meta *meta) {
+    tc_assert_state(meta, csm_st_told_connect_target);
+    char buf[READ_BUF_LEN];
+    int len;
+    const char *good_resp = "250 SPEEDTESTING";
+    if ((len = recv(meta->fd, buf, READ_BUF_LEN, 0)) < 0) {
+        perror("Error receiving connect-to-target response");
+        return 0;
+    }
+    if (strncmp(buf, good_resp, strlen(good_resp))) {
+        buf[len] = '\0';
+        LOG("Unknown connect-to-target response: %s\n", buf);
+        return 0;
+    }
+    tc_change_state(meta, csm_st_connected_target);
+    return 1;
+}
+
+int
+tc_set_bw_rate(struct ctrl_sock_meta *meta, const unsigned bw) {
+    LOG("Telling %s (%s:%s) to set its rate/burst to %u\n", meta->class, meta->host, meta->port, bw);
+    tc_assert_state(meta, csm_st_connected_target);
+    const int buf_size = 80;
+    char msg[buf_size];
+    if (snprintf(msg, buf_size, "RESETCONF BandwidthRate=%u BandwidthBurst=%u\n", bw, bw) < 0) {
+        perror("Error snprintf RESETCONF bw rate/burst");
+        return 0;
+    }
+    if (send(meta->fd, msg, strlen(msg), 0) < 0) {
+        perror("Error sending RESETCONF bw rate/burst message");
+        return 0;
+    }
+    tc_change_state(meta, csm_st_setting_bw);
+    return 1;
+}
+
+int
+tc_did_set_bw_rate(struct ctrl_sock_meta *meta) {
+    tc_assert_state(meta, csm_st_setting_bw);
+    char buf[READ_BUF_LEN];
+    int len;
+    const char *good_resp = "250 OK";
+    if ((len = recv(meta->fd, buf, READ_BUF_LEN, 0)) < 0) {
+        perror("Error receiving did-set-bw response");
+        return 0;
+    }
+    if (strncmp(buf, good_resp, strlen(good_resp))) {
+        buf[len] = '\0';
+        LOG("Unknown did-set-bw response: %s\n", buf);
+        return 0;
+    }
+    tc_change_state(meta, csm_st_bw_set);
+    return 1;
+}
+
+int
+tc_start_measurement(struct ctrl_sock_meta *meta, const unsigned dur) {
+    LOG("Telling %s (%s:%s) to measure for %u secs\n", meta->class, meta->host, meta->port, dur);
+    const int buf_size = 80;
+    char msg[buf_size];
+    if (snprintf(msg, buf_size, "TESTSPEED %d\n", dur) < 0) {
+        LOG("Error making msg in tc_start_measurement()\n");
+        return 0;
+    }
+    if (send(meta->fd, msg, strlen(msg), 0) < 0) {
+        perror("Error sending tc_start_measurement() message");
+        return 0;
+    }
+    tc_change_state(meta, csm_st_measuring);
+    return 1;
+}
+
+int
+tc_output_result(struct ctrl_sock_meta *meta, unsigned m_id, const char *fp) {
+    char buf[READ_BUF_LEN];
+    int len;
+    struct timeval t;
+    if (gettimeofday(&t, NULL) < 0) {
+        perror("Error getting the time");
+        return 0;
+    }
+    if ((len = recv(meta->fd, buf, READ_BUF_LEN, 0)) < 0) {
+        perror("Error reading result response");
+        return 0;
+    }
+    if (!len) {
+        LOG("Read empty result response. Assuming fd=%d is done\n", meta->fd);
+        tc_change_state(meta, csm_st_done);
+        return 1;
+    }
+    buf[len] = '\0';
+    for (int j = len-1; buf[j] == '\r' || buf[j] == '\n'; j--) {
+        buf[j] = '\0';
+    }
+    printf(
+        TS_FMT " %u %s %s;%s:%s %s\n",
+        t.tv_sec, t.tv_usec,
+        m_id, fp,
+        meta->class, meta->host, meta->port,
+        buf);
+    const char *done_resp = "650 SPEEDTESTING END";
+    if (strstr(buf, done_resp)) {
+        tc_change_state(meta, csm_st_done);
     }
     return 1;
 }
@@ -276,4 +416,50 @@ tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char
         }
     }
     return -1;
+}
+
+int
+tc_finished_with_meta(struct ctrl_sock_meta *meta) {
+    LOG("Finished with %s (%s:%s)\n", meta->class, meta->host, meta->port);
+    tc_change_state(meta, csm_st_invalid);
+    if (meta->fd >= 0) {
+        LOG("closing fd=%d\n", meta->fd);
+        close(meta->fd);
+        meta->fd = -1;
+    }
+    //if (meta->class) {
+    //    LOG("freeing class=%s\n", meta->class);
+    //    free(meta->class);
+    //    meta->class = NULL;
+    //}
+    //if (meta->host) {
+    //    LOG("freeing host=%s\n", meta->host);
+    //    free(meta->host);
+    //    meta->host = NULL;
+    //}
+    //if (meta->port) {
+    //    LOG("freeing port=%s\n", meta->port);
+    //    free(meta->port);
+    //    meta->port = NULL;
+    //}
+    //if (meta->pw) {
+    //    LOG("freeing pw=%s\n", meta->pw);
+    //    free(meta->pw);
+    //    meta->pw = NULL;
+    //}
+    if (meta->current_m_id) {
+        LOG("clearing current_m_id=%u\n", meta->current_m_id);
+        meta->current_m_id = 0;
+    }
+    return 1;
+}
+
+void
+tc_assert_state(const struct ctrl_sock_meta *meta, const enum csm_state state) {
+    if (meta->state != state) {
+        LOG("Assert! %s (%s:%s) fd=%d in state %s but expected to be in %s\n",
+            meta->class, meta->host, meta->port, meta->fd,
+            csm_st_str(meta->state), csm_st_str(state));
+            assert(meta->state == state);
+    }
 }

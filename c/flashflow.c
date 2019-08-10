@@ -21,176 +21,37 @@ usage() {
     LOG("%s", s);
 }
 
-/*
- * calls select() on the given socket, waiting for read. Returns negative if
- * error, 0 if timeout occurs, and 1 if readable before timeout.
- */
-int
-wait_till_readable(const int s, const struct timeval timeout) {
-    struct timeval timeout_remaining = timeout;
-    int result;
-    fd_set set;
-    FD_ZERO(&set);
-    FD_SET(s, &set);
-    result = select(s+1, &set, NULL, NULL, &timeout_remaining);
-    if (result < 0) {
-        perror("error on select() waiting for readable");
-        return result;
-    } else if (result == 0) {
-        return 0;
-    }
-    return FD_ISSET(s, &set) ? 1 : 0;
-}
 
-/*
- * tell tor via the given socket to connect to the target relay by the given
- * fingerprint with the given number of conns.
- * returns false if error, otherwise true
- */
 int
-connect_target(const int s, const  char *fp, const unsigned num_conns) {
-    char buf[READ_BUF_LEN];
-    const char *good_resp = "250 SPEEDTESTING";
-    const int buf_size = 1024;
-    char msg[buf_size];
-    int len;
-    int wait_result;
-    struct timeval read_timeout = {.tv_sec = 10, .tv_usec = 0};
-    if (snprintf(msg, buf_size, "TESTSPEED %s %d\n", fp, num_conns) < 0) {
-        LOG("Error making msg in connect_taget()\n");
+fill_msm_params(struct msm_params *p, const unsigned m_id) {
+    p->id = m_id;
+    p->fp = sched_get_fp(p->id);
+    p->dur = sched_get_dur(p->id);
+    p->num_m = sched_get_hosts(p->id, &p->m, &p->m_bw, &p->m_nconn);
+    if (!p->fp) {
+        LOG("Should have gotten a relay fp\n");
         return 0;
     }
-    if (send(s, msg, strlen(msg), 0) < 0) {
-        perror("Error sending connect_taget() message");
+    if (!p->dur) {
+        LOG("Should have gotten a duration\n");
         return 0;
     }
-    wait_result = wait_till_readable(s, read_timeout);
-    if (wait_result < 0) {
-        return 0;
-    } else if (wait_result == 0) {
-        LOG("Timed out waiting for %d to be readable\n", s);
-        return 0;
-    }
-    if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
-        perror("Error reading response to connect_target() message");
-        return 0;
-    }
-    if (strncmp(buf, good_resp, strlen(good_resp))) {
-        buf[len] = '\0';
-        LOG("Unknown connect_target() response: %s\n", buf);
-        return 0;
-    }
-    LOG("fd=%d connected to %s with %u conns\n", s, fp, num_conns);
-    return 1;
-}
-
-/*
- * tell tor the duration of the measurement, which should start it.
- * returns false if error, otherwise true
- */
-int
-start_measurement(const int s, const unsigned dur) {
-    const int buf_size = 1024;
-    char msg[buf_size];
-    if (snprintf(msg, buf_size, "TESTSPEED %d\n", dur) < 0) {
-        LOG("Error making msg in start_measurement()\n");
-        return 0;
-    }
-    if (send(s, msg, strlen(msg), 0) < 0) {
-        perror("Error sending start_measurement() message");
+    if (!p->num_m) {
+        LOG("Should have gotten a set of hosts\n");
         return 0;
     }
     return 1;
-}
-
-/* read at most max_len bytes from socket s into buf, and store the time this
- * is done in t. returns negative value if error, returns 0 if no bytes read,
- * otherwise returns number of bytes read.
- */
-int
-read_response(const int s, char *buf, const size_t max_len, struct timeval *t) {
-    int len;
-    if ((len = recv(s, buf, max_len, 0)) < 0) {
-        perror("Error reading responses");
-        return -1;
-    }
-    if (!len) {
-        return 0;
-    }
-    if (gettimeofday(t, NULL) < 0) {
-        perror("Error getting the time");
-        return -1;
-    }
-    //buf[len] = '\0';
-    return len;
-}
-
-/*
- * provide an array of ctrl_socks and its length. provide a relay fingerprint
- * and the number of connections each tor client should open to it. instruct
- * each tor client to connect to this relay (but not start measuring). returns
- * false if any failure, otherwise true.
- */
-int
-connect_target_all(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const unsigned m_nconn[], const char *fp) {
-    int i;
-    for (i = 0; i < num_ctrl_socks; i++) {
-        int fd = ctrl_sock_metas[i].fd;
-        if (!connect_target(fd, fp, m_nconn[i])) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-/*
- * provide an array of ctrl_socks and its length. provide a measurement
- * duration, in seconds. tell each tor client to measure for that long. return
- * false if any falure, otherwise true
- */
-int
-start_measurements(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_metas[], const unsigned duration) {
-    int i;
-    for (i = 0; i < num_ctrl_socks; i++) {
-        if (!(start_measurement(ctrl_sock_metas[i].fd, duration))) {
-            return 0;
-        }
-    }
-    return 1;
-}
-
-int
-max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
-    int the_max = INT_MIN;
-    int i;
-    for (i = 0; i < array_len; i++) {
-        the_max = array[i].fd > the_max ? array[i].fd : the_max;
-    }
-    return the_max;
 }
 
 int
 find_and_connect_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int num_metas) {
     struct msm_params p;
-    p.id = m_id;
-    p.fp = sched_get_fp(p.id);
-    p.dur = sched_get_dur(p.id);
-    p.num_m = sched_get_hosts(p.id, &p.m, &p.m_bw, &p.m_nconn);
-    if (!p.fp) {
-        LOG("Should have gotten a relay fp\n");
-        return 0;
-    }
-    if (!p.dur) {
-        LOG("Should have gotten a duration\n");
-        return 0;
-    }
-    if (!p.num_m) {
-        LOG("Should have gotten a set of hosts\n");
+    if (!fill_msm_params(&p, m_id)) {
         return 0;
     }
     LOG("About to look for hosts with the following classes. Will eventually tell them the bw and nconn.\n")
     for (int i = 0; i < p.num_m; i++) {
-        LOG("    class=%s bw=%u nconn=%u\n", p.m[i], p.m_bw[i], p.m_nconn[i]);
+        LOG("class=%s bw=%u nconn=%u\n", p.m[i], p.m_bw[i], p.m_nconn[i]);
     }
     int next_meta;
     for (int i = 0; i < p.num_m; i++) {
@@ -204,19 +65,111 @@ find_and_connect_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int n
     return 1;
 }
 
-int send_auth_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int num_metas) {
+int
+send_auth_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int num_metas) {
     for (int i = 0; i < num_metas; i++) {
         if (metas[i].current_m_id != m_id)
             continue;
-        assert(metas[i].state == csm_st_connected);
+        tc_assert_state(&metas[i], csm_st_connected);
         tc_auth_socket(&metas[i]);
+    }
+    return 1;
+}
+
+/** 
+ * Returns def if all items in array are less than def, else the max of array
+ */
+int
+max_or(int array[], int array_len, int def) {
+    int max = def;
+    for (int i = 0; i < array_len; i++)
+        if (array[i] > max)
+            max = array[i];
+    return max;
+}
+
+/**
+ * Find the meta with the given fd
+ */
+struct ctrl_sock_meta *
+meta_with_fd(const int fd, struct ctrl_sock_meta metas[], const int num_metas) {
+    for (int i = 0; i < num_metas; i++)
+        if (metas[i].fd == fd)
+            return &metas[i];
+    return NULL;
+}
+
+/**
+ * Iterate through all metas. For those that are a part of the given
+ * measurement id, if any are not authed, return false. Else return true. Note
+ * how if you are dumb, this will return true even if there are no metas that
+ * are a part of the m_id you gave. It will even return true if num_metas is
+ * zero.
+ */
+int
+is_totally_authed(unsigned m_id, const struct ctrl_sock_meta metas[], const int num_metas) {
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id != m_id)
+            continue;
+        if (metas[i].state != csm_st_authed)
+            return 0;
+    }
+    return 1;
+}
+
+/**
+ * Like is_totally_authed(), but for seeing if all metas with m_id as their
+ * measurement are connected to the target relay.
+ */
+int
+is_totally_connected_target(unsigned m_id, const struct ctrl_sock_meta metas[], const int num_metas) {
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id != m_id)
+            continue;
+        if (metas[i].state != csm_st_connected_target)
+            return 0;
+    }
+    return 1;
+}
+
+/**
+ * Like is_totally_authed(), but for seeing if all metas with m_id as their
+ * measurement have limited their bw
+ */
+int
+is_totally_bw_set(unsigned m_id, const struct ctrl_sock_meta metas[], const int num_metas) {
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id != m_id)
+            continue;
+        if (metas[i].state != csm_st_bw_set)
+            return 0;
+    }
+    return 1;
+}
+
+/**
+ * Like is_totally_authed(), but for seeing if all metas with m_id as their
+ * measurement have finished
+ */
+int
+is_totally_done(unsigned m_id, const struct ctrl_sock_meta metas[], const int num_metas) {
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id != m_id)
+            continue;
+        if (metas[i].state != csm_st_done)
+            return 0;
     }
     return 1;
 }
 
 int new_main(int argc, const char *argv[]) {
     struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
+    unsigned known_m_ids[MAX_NUM_CTRL_SOCKS];
+    int num_known_m_ids = 0;
     int authing_fds[MAX_NUM_CTRL_SOCKS];
+    int connecting_fds[MAX_NUM_CTRL_SOCKS];
+    int setting_bw_fds[MAX_NUM_CTRL_SOCKS];
+    int measuring_fds[MAX_NUM_CTRL_SOCKS];
     if (argc != 3) {
         //LOG("argc=%d\n", argc);
         usage();
@@ -232,7 +185,7 @@ int new_main(int argc, const char *argv[]) {
     }
     LOG("We know about the following Tor clients. They may not exist, haven't checked.\n");
     for (int i = 0; i < num_tor_clients; i++) {
-        LOG("    %s at %s:%s\n", metas[i].class, metas[i].host, metas[i].port);
+        LOG("%s at %s:%s\n", metas[i].class, metas[i].host, metas[i].port);
     }
     if (!sched_new(fp_fname)) {
         LOG("Empty sched from %s or error\n", fp_fname);
@@ -240,22 +193,186 @@ int new_main(int argc, const char *argv[]) {
     }
     // Main loop
     while (!sched_finished()) {
-        unsigned new_m_id = sched_next();
-        if (new_m_id) {
+        unsigned new_m_id;
+        while ((new_m_id = sched_next())) {
+            // We are allowed to start a new measurement. Get the ball rolling
+            // on that by finding and connecting to the needed tor clients.
             LOG("Starting new measurement id=%u\n", new_m_id);
             assert(find_and_connect_metas(new_m_id, metas, num_tor_clients));
             assert(send_auth_metas(new_m_id, metas, num_tor_clients));
+            known_m_ids[num_known_m_ids++] = new_m_id;
         }
-        int num_authing_fds = 0;
-        for (int i = 0; i < num_tor_clients; i++) {
-            if (metas[i].state == csm_st_authing) {
-                LOG("Adding fd=%d to list of fds needed auth response\n", metas[i].fd);
-                authing_fds[num_authing_fds++] = metas[i].fd;
+        // for each known measurement, do things for them if any of them need
+        // things done. (wow such shitty comment)
+        for (int i = 0; i < num_known_m_ids; i++) {
+            struct msm_params p;
+            assert(fill_msm_params(&p, known_m_ids[i]));
+            // for authed -> tell connect to target
+            if (is_totally_authed(known_m_ids[i], metas, num_tor_clients)) {
+                unsigned next_nconn = 0;
+                for (int j = 0; j < num_tor_clients; j++) {
+                    if (metas[j].current_m_id == known_m_ids[i]) {
+                        assert(tc_tell_connect(&metas[j], p.fp, p.m_nconn[next_nconn++]));
+                        tc_assert_state(&metas[j], csm_st_told_connect_target);
+                    }
+                }
+                assert(next_nconn == p.num_m);
+            }
+            // for connected to target -> set bw
+            if (is_totally_connected_target(known_m_ids[i], metas, num_tor_clients)) {
+                unsigned next_bw = 0;
+                for (int j = 0; j < num_tor_clients; j++) {
+                    if (metas[j].current_m_id == known_m_ids[i]) {
+                        assert(tc_set_bw_rate(&metas[j], p.m_bw[next_bw++]));
+                        tc_assert_state(&metas[j], csm_st_setting_bw);
+                    }
+                }
+                assert(next_bw == p.num_m);
+            }
+            // for bw is set -> start measurement
+            if (is_totally_bw_set(known_m_ids[i], metas, num_tor_clients)) {
+                LOG("YAY ITS TIME TO START MEAUREMENT %u FINALLY\n", known_m_ids[i]);
+                int num_told = 0;
+                for (int j = 0; j < num_tor_clients; j++) {
+                    if (metas[j].current_m_id == known_m_ids[i]) {
+                        assert(tc_start_measurement(&metas[j], p.dur));
+                        tc_assert_state(&metas[j], csm_st_measuring);
+                        num_told++;
+                    }
+                }
+                assert(num_told == p.num_m);
+            }
+            // for when done measuring
+            if (is_totally_done(known_m_ids[i], metas, num_tor_clients)) {
+                LOG("WOOHOO MEASUREMENT %U IS DONE\n", known_m_ids[i]);
+                for (int j = 0; j < num_tor_clients; j++) {
+                    if (metas[j].current_m_id == known_m_ids[i]) {
+                        tc_assert_state(&metas[j], csm_st_done);
+                        tc_finished_with_meta(&metas[j]);
+                    }
+                }
+                sched_mark_done(known_m_ids[i]);
+                known_m_ids[i--] = known_m_ids[--num_known_m_ids];
             }
         }
-        LOG("Would do stuff now\n");
-        break;
+        fd_set read_set;
+        FD_ZERO(&read_set);
+        int num_authing_fds = 0;
+        int num_connecting_fds = 0;
+        int num_setting_bw_fds = 0;
+        int num_measuring_fds = 0;
+        for (int i = 0; i < num_tor_clients; i++) {
+            if (metas[i].state == csm_st_authing) {
+                // Build up the list of tor client fds that we are currently waiting
+                // on auth success message from
+                LOG("Adding fd=%d to list of fds needed auth response\n", metas[i].fd);
+                authing_fds[num_authing_fds++] = metas[i].fd;
+                FD_SET(metas[i].fd, &read_set);
+            } else if (metas[i].state == csm_st_told_connect_target) {
+                // Build up the list of tor client fds that we are currently waiting on
+                // a connect-to-target success message from
+                LOG("Adding fd=%d to list of fds needed connect-to-target response\n", metas[i].fd);
+                connecting_fds[num_connecting_fds++] = metas[i].fd;
+                FD_SET(metas[i].fd, &read_set);
+            } else if (metas[i].state == csm_st_setting_bw) {
+                // Build up the list of tor client fds that we are currently waiting on
+                // for a success msg about setting bw
+                LOG("Adding fd=%d to list of fds needed did-set-bw response\n", metas[i].fd);
+                setting_bw_fds[num_setting_bw_fds++] = metas[i].fd;
+                FD_SET(metas[i].fd, &read_set);
+            } else if (metas[i].state == csm_st_measuring) {
+                // Build up the list of tor client fds that we are currently waiting on
+                // for a per-second measurement result from
+                LOG("Adding fd=%d to list of ongoing measurement fds\n", metas[i].fd);
+                measuring_fds[num_measuring_fds++] = metas[i].fd;
+                FD_SET(metas[i].fd, &read_set);
+            }
+        }
+        assert(num_authing_fds >= 0);
+        assert(num_connecting_fds >= 0);
+        assert(num_setting_bw_fds >= 0);
+        assert(num_measuring_fds >= 0);
+        int num_interesting_fds = num_authing_fds + num_connecting_fds + num_setting_bw_fds + num_measuring_fds;
+        if (!num_interesting_fds) {
+            LOG("%d interesting fds. skipping select()\n", num_interesting_fds);
+            continue;
+        }
+        LOG("Going in to select() with %d interesting fds\n", num_interesting_fds);
+        // how long we are willing to wait on select()
+        struct timeval select_timeout = { .tv_sec = 3, .tv_usec = 0 };
+        struct timeval select_timeout_remaining = select_timeout;
+        // for select()
+        int max_fd = max_or(
+            measuring_fds, num_measuring_fds, max_or(
+                setting_bw_fds, num_setting_bw_fds, max_or(
+                    connecting_fds, num_connecting_fds, max_or(
+                        authing_fds, num_authing_fds, 0))));
+        int select_result = select(max_fd+1, &read_set, NULL, NULL, &select_timeout_remaining);
+        if (select_result < 0) {
+            perror("Error on select()");
+            return -1;
+        } else if (select_result == 0) {
+            LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+            continue;
+        }
+        struct ctrl_sock_meta *meta;
+        // Check for authed sockets
+        for (int i = 0; i < num_authing_fds; i++) {
+            if (FD_ISSET(authing_fds[i], &read_set)) {
+                if (!(meta = meta_with_fd(authing_fds[i], metas, num_tor_clients))) {
+                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    return -1;
+                }
+                if (!tc_authed_socket(meta)) {
+                    LOG("Unable to auth to fd=%d\n", authing_fds[i]);
+                    return -1;
+                }
+                tc_assert_state(meta, csm_st_authed);
+            }
+        }
+        // Check for connected-to-target sockets
+        for (int i = 0; i < num_connecting_fds; i++) {
+            if (FD_ISSET(connecting_fds[i], &read_set)) {
+                if (!(meta = meta_with_fd(connecting_fds[i], metas, num_tor_clients))) {
+                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    return -1;
+                }
+                if (!tc_connected_socket(meta)) {
+                    LOG("Unable to to tell fd=%d to connect to target\n", authing_fds[i]);
+                    return -1;
+                }
+                tc_assert_state(meta, csm_st_connected_target);
+            }
+        }
+        // Check for did-set-bw sockets
+        for (int i = 0; i < num_setting_bw_fds; i++) {
+            if (FD_ISSET(setting_bw_fds[i], &read_set)) {
+                if (!(meta = meta_with_fd(setting_bw_fds[i], metas, num_tor_clients))) {
+                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    return -1;
+                }
+                if (!tc_did_set_bw_rate(meta)) {
+                    LOG("Unable to tell fd=%d to set its bw\n", setting_bw_fds[i]);
+                    return -1;
+                }
+                tc_assert_state(meta, csm_st_bw_set);
+            }
+        }
+        // Check for socks with results
+        for (int i = 0; i < num_measuring_fds; i++) {
+            if (FD_ISSET(measuring_fds[i], &read_set)) {
+                if (!(meta = meta_with_fd(measuring_fds[i], metas, num_tor_clients))) {
+                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    return -1;
+                }
+                struct msm_params p;
+                assert(fill_msm_params(&p, meta->current_m_id));
+                assert(tc_output_result(meta, p.id, p.fp));
+            }
+        }
+        //LOG("Would do stuff now\n");
     }
+    LOG("ALLLLLLLL DOOOONNEEEEE\n");
     return 0;
 }
 
