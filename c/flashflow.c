@@ -170,174 +170,96 @@ max_ctrl_sock(const struct ctrl_sock_meta array[], const int array_len) {
 }
 
 int
-main(const int argc, const char *argv[]) {
-    // all the socks we have to tor client ctrl ports
-    struct ctrl_sock_meta ctrl_sock_metas[MAX_NUM_CTRL_SOCKS];
-    // to tell select() all the sockets we care about reading from
-    fd_set read_set;
-    // the number of ctrl socks we make successfully
-    int num_ctrl_socks = 0;
-    // stores the return value from select()
-    int select_result = 0;
-    // tells select() how long to wait before timing out
-    const struct timeval select_timeout = { .tv_sec = 3, .tv_usec = 0 };
-    struct timeval select_timeout_remaining;
-    // the return value of this func
-    int ret = 0;
-    // loop iter counter
-    int i, j;
-    // buffer to store responses from tor clients
-    char resp_buf[READ_BUF_LEN];
-    // stores number of bytes read from read_response()
-    int bytes_read_this_time;
-    // used repeatedly to store the current time for printing
-    struct timeval resp_time;
-    // filename containing relay fingerprints
-    const char *fp_filename = argv[1];
-    const char *client_filename = argv[2];
+find_and_connect_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int num_metas) {
+    struct msm_params p;
+    p.id = m_id;
+    p.fp = sched_get_fp(p.id);
+    p.dur = sched_get_dur(p.id);
+    p.num_m = sched_get_hosts(p.id, &p.m, &p.m_bw, &p.m_nconn);
+    if (!p.fp) {
+        LOG("Should have gotten a relay fp\n");
+        return 0;
+    }
+    if (!p.dur) {
+        LOG("Should have gotten a duration\n");
+        return 0;
+    }
+    if (!p.num_m) {
+        LOG("Should have gotten a set of hosts\n");
+        return 0;
+    }
+    LOG("About to look for hosts with the following classes. Will eventually tell them the bw and nconn.\n")
+    for (int i = 0; i < p.num_m; i++) {
+        LOG("    class=%s bw=%u nconn=%u\n", p.m[i], p.m_bw[i], p.m_nconn[i]);
+    }
+    int next_meta;
+    for (int i = 0; i < p.num_m; i++) {
+        const char *class = p.m[i];
+        if ((next_meta = tc_next_available(num_metas, metas, class)) < 0) {
+            LOG("Unable to find available meta with class %s\n", class);
+            return 0;
+        }
+        metas[next_meta].current_m_id = m_id;
+    }
+    return 1;
+}
+
+int send_auth_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int num_metas) {
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id != m_id)
+            continue;
+        assert(metas[i].state == csm_st_connected);
+        tc_auth_socket(&metas[i]);
+    }
+    return 1;
+}
+
+int new_main(int argc, const char *argv[]) {
+    struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
+    int authing_fds[MAX_NUM_CTRL_SOCKS];
     if (argc != 3) {
-        LOG("argc=%d\n", argc);
+        //LOG("argc=%d\n", argc);
         usage();
-        ret = -1;
-        goto end;
+        return -1;
     }
-    // numer of tor clients read from client_filename. Later we'll see how many
-    // we can actually connect to
-    unsigned num_tor_clients;
-    if ((num_tor_clients = tc_client_file_read(client_filename, ctrl_sock_metas)) < 1) {
-        ret = -1;
-        goto end;
+    const char *fp_fname = argv[1];
+    const char *client_fname = argv[2];
+    // number of tor clients read from file
+    int num_tor_clients;
+    if ((num_tor_clients = tc_client_file_read(client_fname, metas)) < 1) {
+        LOG("Error reading %s or it was empty\n", client_fname);
+        return -1;
     }
-    if (!sched_new(fp_filename)) {
-        LOG("Empty schedule from %s, nothing to do\n", fp_filename);
-        goto end;
+    LOG("We know about the following Tor clients. They may not exist, haven't checked.\n");
+    for (int i = 0; i < num_tor_clients; i++) {
+        LOG("    %s at %s:%s\n", metas[i].class, metas[i].host, metas[i].port);
     }
-    // make all the socks to tor clients
-    if ((num_ctrl_socks = tc_make_sockets(num_tor_clients, ctrl_sock_metas)) != num_tor_clients) {
-        LOG("Unable to open all sockets\n");
-        ret = -1;
-        goto cleanup;
+    if (!sched_new(fp_fname)) {
+        LOG("Empty sched from %s or error\n", fp_fname);
+        return -1;
     }
-    // print out useful info about each ctrl conn we have
-    for (i = 0; i < num_ctrl_socks; i++) {
-        struct ctrl_sock_meta meta = ctrl_sock_metas[i];
-        LOG("using %s:%s fd=%d\n", meta.host, meta.port, meta.fd);
-    }
-    // to tell select() the max fd we care about
-    const int the_max_ctrl_sock = max_ctrl_sock(ctrl_sock_metas, num_ctrl_socks);
-    if (!tc_auth_sockets(num_ctrl_socks, ctrl_sock_metas)) {
-        ret = -1;
-        goto cleanup;
-    }
-    struct msm_params msm_params;
+    // Main loop
     while (!sched_finished()) {
-        msm_params.id = sched_next();
-        assert(msm_params.id);
-        msm_params.dur = sched_get_dur(msm_params.id);
-        msm_params.fp = sched_get_fp(msm_params.id);
-        msm_params.num_m = sched_get_hosts(msm_params.id, &msm_params.m, &msm_params.m_bw, &msm_params.m_nconn);
-
-        LOG("Now measuring %s for %us with ...\n", msm_params.fp, msm_params.dur);
-        for (int i = 0; i < msm_params.num_m; i++) {
-            LOG("    %s bw=%u conns=%u\n", msm_params.m[i], msm_params.m_bw[i], msm_params.m_nconn[i]);
+        unsigned new_m_id = sched_next();
+        if (new_m_id) {
+            LOG("Starting new measurement id=%u\n", new_m_id);
+            assert(find_and_connect_metas(new_m_id, metas, num_tor_clients));
+            assert(send_auth_metas(new_m_id, metas, num_tor_clients));
         }
-        // tell everyone to connect to the given fingerprint
-        LOG("Telling everyone to connect to %s\n", msm_params.fp);
-        if (!connect_target_all(num_ctrl_socks, ctrl_sock_metas, msm_params.m_nconn, msm_params.fp)) {
-            ret = -1;
-            goto cleanup;
-        }
-        LOG("Everyone connected to %s\n", msm_params.fp);
-        if (!tc_set_bw_rates(num_ctrl_socks, ctrl_sock_metas, msm_params.m_bw)) {
-            LOG("Error telling all measurers to set their bw rates\n");
-            ret = -1;
-            goto cleanup;
-        }
-        // tell everyone to start measuring
-        LOG("Telling everyone to measure for %u seconds\n", msm_params.dur);
-        if (!start_measurements(num_ctrl_socks, ctrl_sock_metas, msm_params.dur)) {
-            LOG("Error starting all measurements\n");
-            ret = -1;
-            goto cleanup;
-        }
-        LOG("Everyone got the message to measure for %u seconds\n", msm_params.dur);
-        // "main loop" of receiving results from the measurers
-        LOG("Entering read loop\n");
-        struct timeval now;
-        gettimeofday(&now, NULL);
-        long last_logged_second = now.tv_sec;
-        int results_since_last_logged = 0;
-        int total_results = 0;
-        while (1) {
-            FD_ZERO(&read_set);
-            for (i = 0; i < num_ctrl_socks; i++) {
-                FD_SET(ctrl_sock_metas[i].fd, &read_set);
-            }
-            // some *nix OSes will use the timeout arg to indicate how much
-            // time was left when it returns successfully. Since we aren't
-            // necessarily interested in that, but we will be interested in the
-            // original timeout later for logging, copy it.
-            select_timeout_remaining = select_timeout;
-            // blocks until timeout or 1 (or more) socket can read
-            select_result = select(the_max_ctrl_sock+1, &read_set, NULL, NULL, &select_timeout_remaining);
-            if (select_result < 0) {
-                perror("Error on select()");
-                ret = -1;
-                goto cleanup;
-            } else if (select_result == 0) {
-                LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
-                goto end_of_single_fp_loop;
-            }
-            // check each socket and see if it can read
-            for (i = 0; i< num_ctrl_socks; i++) {
-                if (FD_ISSET(ctrl_sock_metas[i].fd, &read_set)) {
-                    // read in the response
-                    bytes_read_this_time = read_response(ctrl_sock_metas[i].fd, resp_buf, READ_BUF_LEN, &resp_time);
-                    if (bytes_read_this_time < 0) {
-                        LOG("select() said there was something to read on %d, but had error.\n", ctrl_sock_metas[i].fd);
-                        ret = -1;
-                        goto cleanup;
-                    } else if (bytes_read_this_time == 0) {
-                        LOG("read 0 bytes when select() said there was something to read on %d\n", ctrl_sock_metas[i].fd);
-                        goto end_of_single_fp_loop;
-                    }
-                    // make sure the end is clean, and remove any trailing newlines
-                    resp_buf[bytes_read_this_time] = '\0';
-                    for (j = bytes_read_this_time-1; resp_buf[j] == '\r' || resp_buf[j] == '\n'; j--) {
-                        resp_buf[j] = '\0';
-                    }
-                    // output the result on stdout
-                    printf(
-                        TS_FMT " %u %s %s;%s:%s %s\n",
-                        resp_time.tv_sec, resp_time.tv_usec,
-                        msm_params.id, msm_params.fp,
-                        ctrl_sock_metas[i].class,
-                        ctrl_sock_metas[i].host, ctrl_sock_metas[i].port,
-                        resp_buf);
-                    results_since_last_logged++;
-                    total_results++;
-                    gettimeofday(&now, NULL);
-                    if (now.tv_sec > last_logged_second) {
-                        LOG("Have %d results (%d total)\n", results_since_last_logged, total_results);
-                        results_since_last_logged = 0;
-                        last_logged_second = now.tv_sec;
-                    }
-                }
+        int num_authing_fds = 0;
+        for (int i = 0; i < num_tor_clients; i++) {
+            if (metas[i].state == csm_st_authing) {
+                LOG("Adding fd=%d to list of fds needed auth response\n", metas[i].fd);
+                authing_fds[num_authing_fds++] = metas[i].fd;
             }
         }
-end_of_single_fp_loop:
-        sched_free_hosts(msm_params.m, msm_params.m_bw, msm_params.m_nconn, msm_params.num_m);
-        sched_mark_done(msm_params.id);
-        LOG("Ended with %d total results\n", total_results);
-        sleep(1);
+        LOG("Would do stuff now\n");
+        break;
     }
+    return 0;
+}
 
-cleanup:
-    for (i = 0; i < num_ctrl_socks; i++) {
-        LOG("Closing fd=%d\n", ctrl_sock_metas[i].fd);
-        close(ctrl_sock_metas[i].fd);
-        free_ctrl_sock_meta(ctrl_sock_metas[i]);
-    }
-end:
-    return ret;
+int
+main(const int argc, const char *argv[]) {
+    return new_main(argc, argv);
 }

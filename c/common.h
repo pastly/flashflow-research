@@ -18,13 +18,23 @@
         fprintf(stderr, "[" TS_FMT "] " fmt, t.tv_sec, t.tv_usec, ##__VA_ARGS__); \
     } while (0);
 
+enum csm_state {
+    csm_st_invalid = 0,
+    csm_st_connected,
+    csm_st_authing,
+    csm_st_authed,
+    csm_st_told_connect,
+    csm_st_measuring,
+};
+
 struct ctrl_sock_meta {
     int fd;
+    enum csm_state state;
     char *class;
     char *host;
     char *port;
     char *pw;
-    int current_measurement;
+    unsigned current_m_id;
 };
 
 struct msm_params {
@@ -37,7 +47,7 @@ struct msm_params {
     unsigned *m_nconn;
 };
 
-void free_msm_params(struct msm_params p);
+const char *csm_st_str(const enum csm_state s);
 void free_ctrl_sock_meta(struct ctrl_sock_meta m);
 
 #endif /* !defined(FF_COMMON_H) */

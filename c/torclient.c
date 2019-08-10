@@ -4,9 +4,71 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <unistd.h>
+#include <assert.h>
 
 #include "common.h"
 #include "torclient.h"
+
+/**
+ * Change the state of the given meta, and assert on invalid state changes.
+ */
+void
+tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
+    enum csm_state old_state = meta->state;
+    switch (old_state) {
+        case csm_st_invalid:
+            switch (new_state) {
+                case csm_st_connected:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            }; break;
+        case csm_st_connected:
+            switch (new_state) {
+                case csm_st_authing:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            }; break;
+        case csm_st_authing:
+            switch (new_state) {
+                case csm_st_authed:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        case csm_st_authed:
+            switch (new_state) {
+                case csm_st_told_connect:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        case csm_st_told_connect:
+            switch (new_state) {
+                case csm_st_measuring:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            };
+            break;
+        default:
+            LOG("Invalid old_state=%s\n", csm_st_str(old_state));
+            assert(0);
+            break;
+    }
+tc_good_state_change:
+    LOG("Changing from %s to %s on fd=%d\n", csm_st_str(old_state), csm_st_str(new_state), meta->fd);
+    meta->state = new_state;
+    return;
+tc_bad_state_change:
+    LOG("Invalid new_state=%s when old_state=%s on fd=%d\n", csm_st_str(new_state), csm_st_str(old_state), meta->fd);
+    assert(0);
+    return;
+}
 
 /**
  * Read all the lines from fname and store tor client info in the given
@@ -61,11 +123,12 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
         free(tofree);
         LOG("read client config class='%s' host='%s' port='%s' pw='%s'\n", class, host, port, pw);
         metas[count].fd = -1;
+        metas[count].state = csm_st_invalid;
         metas[count].class = class;
         metas[count].host = host;
         metas[count].port = port;
         metas[count].pw = pw;
-        metas[count].current_measurement = -1;
+        metas[count].current_m_id = 0;
         count++;
     }
     free(line);
@@ -77,7 +140,7 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
  * returns -1 if error, otherwise socket
  */
 int
-tc_make_socket(const struct ctrl_sock_meta meta) {
+tc_make_socket(struct ctrl_sock_meta *meta) {
     int s;
     struct addrinfo hints, *addr;
     s = socket(PF_INET, SOCK_STREAM, 0);
@@ -88,37 +151,18 @@ tc_make_socket(const struct ctrl_sock_meta meta) {
     memset(&hints, 0, sizeof(hints));
     hints.ai_family = PF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo(meta.host, meta.port, &hints, &addr) != 0) {
+    if (getaddrinfo(meta->host, meta->port, &hints, &addr) != 0) {
         perror("Error getaddrinfo()");
         return -1;
     }
     if (connect(s, addr->ai_addr, addr->ai_addrlen) != 0) {
-        LOG("Could not connect to %s:%s ... ", meta.host, meta.port);
+        LOG("Could not connect to %s:%s ... ", meta->host, meta->port);
         perror("Error connect() control socket");
         return -1;
     }
+    meta->fd = s;
+    tc_change_state(meta, csm_st_connected);
     return s;
-}
-
-/**
- * open many sockets to tor control ports. the created sockets will be stored
- * in the corresponding struct in metas. when everything goes well, return the
- * number of sockets created (will equal num_metas) and fill up metas. if
- * something goes wrong, return the number of sockets we successfully made
- * before the issue, fill up metas with the good socks, and return early.
- */
-int
-tc_make_sockets(const unsigned num_metas, struct ctrl_sock_meta metas[]) {
-    int i;
-    for (i = 0; i < num_metas; i++) {
-        int ctrl_sock;
-        if ((ctrl_sock = tc_make_socket(metas[i])) < 0) {
-            return i;
-        }
-        LOG("connected to %s:%s\n", metas[i].host, metas[i].port);
-        metas[i].fd = ctrl_sock;
-    }
-    return num_metas;
 }
 
 /*
@@ -128,47 +172,37 @@ tc_make_sockets(const unsigned num_metas, struct ctrl_sock_meta metas[]) {
  * returns false if error, otherwise true
  */
 int
-tc_auth_socket(const int s, const char *ctrl_pw) {
-    char buf[READ_BUF_LEN];
+tc_auth_socket(struct ctrl_sock_meta *meta) {
     char msg[80];
-    int len;
+    int s = meta->fd;
+    const char *ctrl_pw = meta->pw;
+    assert(meta->state == csm_st_connected);
     if (!ctrl_pw)
         ctrl_pw = "";
     if (snprintf(msg, 80, "AUTHENTICATE \"%s\"\n", ctrl_pw) < 0) {
         perror("Error snprintf auth message");
         return 0;
     }
-    const char *good_resp = "250 OK";
     if (send(s, msg, strlen(msg), 0) < 0) {
         perror("Error sending auth message");
         return 0;
     }
-    if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
-        perror("Error receiving auth response");
-        return 0;
-    }
-    if (strncmp(buf, good_resp, strlen(good_resp))) {
-        buf[len] = '\0';
-        LOG("Unknown auth response: %s\n", buf);
-        return 0;
-    }
-    //printf("Auth response: %d %s\n", len, buf);
+    tc_change_state(meta, csm_st_authing);
     return 1;
-}
-
-/**
- * provide an array of metas and its length. authenticate to each one.
- * returns false if we fail to auth to any tor, otherwise true.
- */
-int
-tc_auth_sockets(const unsigned num_metas, const struct ctrl_sock_meta metas[]) {
-    int i;
-    for (i = 0; i < num_metas; i++) {
-        if (!tc_auth_socket(metas[i].fd, metas[i].pw)) {
-            return 0;
-        }
-    }
-    return 1;
+    //char buf[READ_BUF_LEN];
+    //int len;
+    //const char *good_resp = "250 OK";
+    //if ((len = recv(s, buf, READ_BUF_LEN, 0)) < 0) {
+    //    perror("Error receiving auth response");
+    //    return 0;
+    //}
+    //if (strncmp(buf, good_resp, strlen(good_resp))) {
+    //    buf[len] = '\0';
+    //    LOG("Unknown auth response: %s\n", buf);
+    //    return 0;
+    //}
+    ////printf("Auth response: %d %s\n", len, buf);
+    //return 1;
 }
 
 int
@@ -211,4 +245,35 @@ tc_set_bw_rates(const int num_ctrl_socks, const struct ctrl_sock_meta ctrl_sock_
         }
     }
     return 1;
+}
+
+/** 
+ * Finds and returns the index of the next available meta with the given class.
+ * "Available" means it isn't used in a measurement, we just now tried
+ * connecting to it successfully, and we were able to auth to it. We leave it
+ * in the authed and ready-to-go state.
+ * 
+ * If none is available, returns -1.
+ */
+int
+tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char *class) {
+    for (int i = 0; i < num_metas; i++) {
+        if (!strcmp(metas[i].class, class) && !metas[i].current_m_id) {
+            if (tc_make_socket(&metas[i]) < 0) {
+                //LOG("Unable to open socket to %s:%s\n", metas[i].host, metas[i].port);
+                continue;
+            }
+            LOG("Connected to %s (%s:%s) on fd=%d\n", metas[i].class, metas[i].host, metas[i].port, metas[i].fd);
+            //if (!tc_auth_socket(metas[i].fd, metas[i].pw)) {
+            //    //LOG("Could not auth on fd=%d\n", metas[i].fd);
+            //    close(metas[i].fd);
+            //    metas[i].fd = -1;
+            //    continue;
+            //}
+            //tc_change_state(&metas[i], csm_st_authed);
+            //LOG("Authed to %s (%s:%s) on fd=%d\n", metas[i].class, metas[i].host, metas[i].port, metas[i].fd);
+            return i;
+        }
+    }
+    return -1;
 }
