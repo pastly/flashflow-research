@@ -374,12 +374,19 @@ tc_output_result(struct ctrl_sock_meta *meta, unsigned m_id, const char *fp) {
     for (int j = len-1; buf[j] == '\r' || buf[j] == '\n'; j--) {
         buf[j] = '\0';
     }
-    printf(
-        TS_FMT " %u %s %s;%s:%s %s\n",
-        t.tv_sec, t.tv_usec,
-        m_id, fp,
-        meta->class, meta->host, meta->port,
-        buf);
+    char *token, *head, *tofree;
+    tofree = head = strdup(buf);
+    while ((token = strsep(&head, "\r\n"))) {
+        if (!strlen(token))
+            continue;
+        printf(
+            TS_FMT " %u %s %s;%s:%s %s\n",
+            t.tv_sec, t.tv_usec,
+            m_id, fp,
+            meta->class, meta->host, meta->port,
+            token);
+    }
+    free(tofree);
     const char *done_resp = "650 SPEEDTESTING END";
     if (strstr(buf, done_resp)) {
         tc_change_state(meta, csm_st_done);
