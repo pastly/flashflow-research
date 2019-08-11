@@ -254,6 +254,7 @@ int new_main(int argc, const char *argv[]) {
                 sched_mark_done(known_m_ids[i]);
                 known_m_ids[i--] = known_m_ids[--num_known_m_ids];
             }
+            sched_free_hosts(p.m, p.m_bw, p.m_nconn, p.num_m);
         }
         fd_set read_set;
         FD_ZERO(&read_set);
