@@ -157,16 +157,18 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
             }
             token_num++;
         }
-        if (!class || !host || !port || !pw)
+        if (!class || !host || !port || !pw || token_num != 4)
             continue;
         free(tofree);
-        LOG("read client config class='%s' host='%s' port='%s' pw='%s'\n", class, host, port, pw);
+        int is_bg = !strncmp(class, "bg", 2);
+        LOG("read client config class='%s' host='%s' port='%s' pw='%s' is_bg='%d'\n", class, host, port, pw, is_bg);
         metas[count].fd = -1;
         metas[count].state = csm_st_invalid;
         metas[count].class = class;
         metas[count].host = host;
         metas[count].port = port;
         metas[count].pw = pw;
+        metas[count].is_bg = is_bg;
         metas[count].current_m_id = 0;
         count++;
     }
@@ -264,7 +266,9 @@ tc_tell_connect(struct ctrl_sock_meta *meta, const char *fp, const unsigned conn
     tc_assert_state(meta, csm_st_authed);
     const int buf_size = 1024;
     char msg[buf_size];
-    if (snprintf(msg, buf_size, "TESTSPEED %s %u\n", fp, conns) < 0) {
+    const char *bg_str = meta->is_bg ? " BG" : "";
+    assert(!meta->is_bg || (meta->is_bg && conns == 1));
+    if (snprintf(msg, buf_size, "TESTSPEED %s %u%s\n", fp, conns, bg_str) < 0) {
         LOG("Error making msg in tc_tell_connect()");
         return 0;
     }
@@ -302,9 +306,11 @@ int
 tc_set_bw_rate(struct ctrl_sock_meta *meta, const unsigned bw) {
     LOG("Telling %s (%s:%s) to set its rate/burst to %u\n", meta->class, meta->host, meta->port, bw);
     tc_assert_state(meta, csm_st_connected_target);
-    const int buf_size = 80;
+    const int buf_size = 1024;
     char msg[buf_size];
-    if (snprintf(msg, buf_size, "RESETCONF BandwidthRate=%u BandwidthBurst=%u\n", bw, bw) < 0) {
+    unsigned acc = meta->is_bg ? 1 : 32;
+    if (snprintf(msg, buf_size, "RESETCONF BandwidthRate=%u BandwidthBurst=%u "
+            "SchedulerEchoCellMustAccumulate=%u\n", bw, bw, acc) < 0) {
         perror("Error snprintf RESETCONF bw rate/burst");
         return 0;
     }

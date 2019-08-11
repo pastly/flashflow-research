@@ -38,6 +38,7 @@ struct ctrl_sock_meta {
     char *host;
     char *port;
     char *pw;
+    int is_bg;
     unsigned current_m_id;
 };
 

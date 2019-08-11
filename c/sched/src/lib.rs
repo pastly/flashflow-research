@@ -113,6 +113,13 @@ impl Measurement {
                 conns: host_conns[i],
             });
         }
+        for h in hosts.iter() {
+            if h.class == "bg" && h.conns != 1 {
+                panic!("background host must only have 1 conn");
+            } else if h.class == "bg" && h.bw != 125000 {
+                panic!("background host bw must be exactly 125000 (bytes/second AKA 1 Mbit/s)");
+            }
+        }
         Some(Measurement {
             id,
             fp,
