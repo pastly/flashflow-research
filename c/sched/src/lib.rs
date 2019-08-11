@@ -161,6 +161,9 @@ pub extern "C" fn sched_new(fname: *const c_char) -> usize {
             msms.insert(m.id, m);
         }
     }
+    if sched_next_internal(false) == 0 {
+        panic!("No measurements with 0 depends exist");
+    }
     sched_num()
 }
 
@@ -192,16 +195,22 @@ pub extern "C" fn sched_num_incomplete() -> usize {
         .count()
 }
 
-#[no_mangle]
-pub extern "C" fn sched_next() -> u32 {
+fn sched_next_internal(mark:  bool) -> u32 {
     let mut msms = MSMS.lock().unwrap();
     for m in msms.values_mut() {
         if m.state == State::Waiting && m.depends.len() == m.finished_depends.len() {
-            m.state = State::InProgress;
+            if mark {
+                m.state = State::InProgress;
+            }
             return m.id;
         }
     }
     0
+}
+
+#[no_mangle]
+pub extern "C" fn sched_next() -> u32 {
+    return sched_next_internal(true);
 }
 
 #[no_mangle]
