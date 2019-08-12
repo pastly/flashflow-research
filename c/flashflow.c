@@ -244,7 +244,7 @@ int new_main(int argc, const char *argv[]) {
             }
             // for when done measuring
             if (is_totally_done(known_m_ids[i], metas, num_tor_clients)) {
-                LOG("WOOHOO MEASUREMENT %U IS DONE\n", known_m_ids[i]);
+                LOG("WOOHOO MEASUREMENT %u IS DONE\n", known_m_ids[i]);
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
                         tc_assert_state(&metas[j], csm_st_done);
