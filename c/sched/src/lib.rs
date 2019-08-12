@@ -120,6 +120,9 @@ impl Measurement {
                 panic!("background host bw must be exactly 125000 (bytes/second AKA 1 Mbit/s)");
             }
         }
+        if hosts.iter().filter(|h| h.class == "bg").count() > 1 {
+            panic!("can only have 0 or 1 'bg' tor clients");
+        }
         Some(Measurement {
             id,
             fp,
