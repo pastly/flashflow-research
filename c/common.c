@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <assert.h>
 
 #include "common.h"
 
@@ -15,6 +16,7 @@ csm_st_str(const enum csm_state s) {
         case csm_st_bw_set: return "BW_SET"; break;
         case csm_st_measuring: return "MEASURING"; break;
         case csm_st_done: return "DONE"; break;
+        default: assert(0); break;
     }
 }
 
