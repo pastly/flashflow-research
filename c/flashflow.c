@@ -324,6 +324,8 @@ int new_main(int argc, const char *argv[]) {
             LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
             loops_without_progress++;
             continue;
+        } else {
+            loops_without_progress = 0;
         }
         struct ctrl_sock_meta *meta;
         // Check for authed sockets
