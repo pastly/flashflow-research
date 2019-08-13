@@ -1,0 +1,7 @@
+#he-nrl,ddns,india.do,amst.do-160s-750Mbps-463.2Mbps,463.2Mbps,463.2Mbps,463.2Mbps-defdefdefmax
+#he-amst.do-160s-250Mbps-478.2Mbps-defdefdefmax
+#he-nrl,ddns-160s-unlim-667.5Mbps,667.5Mbps-defdefdefmax
+#he-india.do,amst.do-160s-500Mbps-494.1Mbps,494.1Mbps-defdefdefmax
+
+#he-ddns-160s-unlim-667.5Mbps-defdefdefmax
+he-nrl,ddns-160s-unlim-667.5Mbps,667.5Mbps-defdefdefmax

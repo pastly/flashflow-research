@@ -6,6 +6,7 @@ TOR_HOST=$2
 TOR_HOST_CACHE_DIR=$3
 BW_LIM=$4
 N=$5
+BG_CLIENT_N=$6
 
 pkill ph || true
 pkill -9 tor || true
@@ -20,6 +21,11 @@ for A in $(seq 1 $N); do
     chmod 700 flashflow-tordata-${A}
     cp -v cached-* flashflow-tordata-${A}/
 done
+if (( "$BG_CLIENT_N" > "0" )); then
+    mkdir -pv flashflow-tordata-${BG_CLIENT_N}
+    chmod 700 flashflow-tordata-${BG_CLIENT_N}
+    cp -v cached-* flashflow-tordata-${BG_CLIENT_N}/
+fi
 rm -fv cached-*
 
 for A in $(seq 1 $N); do
@@ -30,5 +36,13 @@ for A in $(seq 1 $N); do
 		>measurer$A.stdout.txt \
 		2>measurer$A.stderr.txt &
 done
+if (( "$BG_CLIENT_N" > "0" )); then
+    nohup ./tor-securebw-bin -f c/flashflow-torrc-$BG_CLIENT_N \
+        --BandwidthRate 125000 \
+        --BandwidthBurst 125000 \
+        </dev/null \
+		>measurer$BG_CLIENT_N.stdout.txt \
+		2>measurer$BG_CLIENT_N.stderr.txt &
+fi
 
 sleep 10

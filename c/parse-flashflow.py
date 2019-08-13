@@ -56,7 +56,7 @@ def do(fd):
 def main():
     for fname in sys.argv[1:]:
         if fname.endswith('.xz'):
-            fd = Popen(['xzcat', fname], stdout=PIPE, text=True).stdout
+            fd = Popen(['xzcat', fname], stdout=PIPE, universal_newlines=True).stdout
         else:
             fd = open(fname, 'rt')
         do(fd)

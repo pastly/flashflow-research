@@ -9,6 +9,7 @@ import subprocess
 import time
 import logging
 import re
+from math import ceil
 from itertools import chain, combinations
 
 log = logging.getLogger(__name__)
@@ -254,12 +255,14 @@ def _num_socks_for_host(host, others, total_socks):
 
 
 def _bw_str_to_bytes(bw_str):
-    num = int(bw_str[:-4])
+    num = float(bw_str[:-4])
     tail = bw_str[-4:]
-    assert tail in ('Mbps', 'Gbps')
+    assert tail in ('Kbps', 'Mbps', 'Gbps')
+    if tail == 'Kbps':
+        return ceil(num * 1000 / 8)
     if tail == 'Mbps':
-        return int(num * 1000 * 1000 / 8)
-    return int(num * 1000 * 1000 * 1000 / 8)
+        return ceil(num * 1000 * 1000 / 8)
+    return ceil(num * 1000 * 1000 * 1000 / 8)
 
 
 def _mem_str_to_bytes(s):
@@ -391,8 +394,14 @@ def _stop_bwevents(args):
 def _start_phnew_tor_clients(args, params):
     procs = []
     extra_wait = 0
-    for host, bw_lim in zip(params['hosts'], params['host_tor_bws']):
+    hosts = copy.copy(params['hosts'])
+    host_tor_bws = copy.copy(params['host_tor_bws'])
+    if args.bg_host not in hosts:
+        hosts += [args.bg_host]
+        host_tor_bws += ['unlim']
+    for host, bw_lim in zip(hosts, host_tor_bws):
         n_mproc = NUM_CPU_MAP[host]
+        bg_client_n = 0 if host != args.bg_host else n_mproc + 1
         extra_wait += n_mproc / 2
         if bw_lim == 'unlim':
             bw_lim = 125000000
@@ -400,12 +409,14 @@ def _start_phnew_tor_clients(args, params):
             # close enough to even distribution of bw lim across cores
             bw_lim = _bw_str_to_bytes(bw_lim)
             bw_lim = (bw_lim // n_mproc) + 1
-        cmd = 'bash -ls {d} {tor_host} {tor_cache_dir} {bw} {n_mproc}'.format(
+            bw_lim = max(bw_lim, 76800)
+        cmd = 'bash -ls {d} {tor_host} {tor_cache_dir} {bw} {n_mproc} {bg}'.format(
             d=args.measurer_ph_dir,
             tor_host=args.target_ssh_ip,
             tor_cache_dir=args.target_cache_dir,
             bw=bw_lim,
             n_mproc=n_mproc,
+            bg=bg_client_n,
         )
         script = 'start-phnew-tor-client.sh'
         cmd = ['ssh', host, cmd]
@@ -431,25 +442,42 @@ def _measure_phnew(args, out_dir, i, params):
         _start_bwevents(args)
         _start_dstat(args, params)
         os.makedirs(out_dir, exist_ok=True)
-        hostports = []
+        hosts, host_bws, host_socks, host_ips, host_ports = [], [], [], [], []
         total_num_socks = 160
         socks_per_host_iter = _split_x_by_y(total_num_socks, len(params['hosts']))
-        for host in params['hosts']:
+        for host, host_tor_bw in zip(params['hosts'], params['host_tor_bws']):
             num_socks_this_host = next(socks_per_host_iter)
             num_cpu = NUM_CPU_MAP[host]
             socks_per_cpu_iter = _split_x_by_y(num_socks_this_host, num_cpu)
             for cpu_num in range(num_cpu):
-                hostports.append(IP_MAP[host])
-                hostports.append(PHNEW_CTRL_PORT_MAP[host]+cpu_num)
-                hostports.append(next(socks_per_cpu_iter))
-                log.debug('hostport info for %s %d: %s' % (host, cpu_num, hostports[-3:]))
-        cmd = 'bash -ls {d} {fname} {fp} {dur} {pw} {hp_pairs}'.format(
+                bw = max(ceil(_bw_str_to_bytes(host_tor_bw)/num_cpu), 76800)
+                hosts.append(host)
+                host_bws.append(str(bw))
+                host_socks.append(str(next(socks_per_cpu_iter)))
+                host_ips.append(IP_MAP[host])
+                host_ports.append(str(PHNEW_CTRL_PORT_MAP[host]+cpu_num))
+        hosts.append('bg')
+        host_bws.append('125000')
+        host_socks.append('1')
+        host_ips.append(IP_MAP[args.bg_host])
+        host_ports.append(str(NUM_CPU_MAP[args.bg_host]+9000))
+        hosts = ','.join(hosts)
+        host_bws = ','.join(host_bws)
+        host_socks = ','.join(host_socks)
+        host_ips = ','.join(host_ips)
+        host_ports = ','.join(host_ports)
+        log.debug('%s %s %s %s %s', hosts, host_bws, host_socks, host_ips, host_ports)
+        cmd = 'bash -ls {d} {fname} {fp} {dur} {pw} {h} {h_bw} {h_s} {h_ips} {h_ports}'.format(
             d=args.coord_ph_dir,
             fname='/tmp/phnew.test.txt.xz',
             fp=args.target_fp,
             dur=args.ph_dur,
             pw=args.ph_password,
-            hp_pairs=' '.join('%s' % hp for hp in hostports),
+            h=hosts,
+            h_bw=host_bws,
+            h_s=host_socks,
+            h_ips=host_ips,
+            h_ports=host_ports,
         )
         script = 'measure-ph.sh'
         cmd = ['ssh', args.coord_ssh_ip, cmd]
@@ -490,6 +518,7 @@ def _measure_phnew(args, out_dir, i, params):
             log.debug('ret: %s', ret)
         return True
     finally:
+        pass
         _stop_dstat(args, params)
         _stop_bwevents(args)
         _stop_phnew_tor_clients(args, params)
@@ -599,7 +628,11 @@ def _stop_iperf_server(args):
 
 def _stop_ph(args, params):
     procs, rets = [], []
-    for host in [args.coord_ssh_ip, *params['hosts']]:
+    hosts = params['hosts']
+    hosts += [args.coord_ssh_ip]
+    if args.bg_host not in hosts:
+        hosts += [args.bg_host]
+    for host in hosts:
         cmd = ['ssh', host, 'pkill', 'ph']
         log.debug('Executing: %s', cmd)
         procs.append(subprocess.Popen(cmd))
@@ -623,7 +656,7 @@ def _start_tor(args, params):
     if params['tor_bw'] == 'unlim':
         tor_bw = 125000000
     else:
-        tor_bw = _bw_str_to_bytes(params['tor_bw'])
+        tor_bw = max(_bw_str_to_bytes(params['tor_bw']), 76800)
     cmd = 'bash -ls {net_dir} {tor_bw}'.format(
         net_dir=args.target_tor_net_dir, tor_bw=tor_bw)
     cmd = ['ssh', args.target_ssh_ip, cmd]
@@ -671,11 +704,12 @@ def main(args):
             #_set_tc(args, params)
             # Begin measurements
             if len(params['hosts']) == 1:
-                log.debug(
-                    'Measuring ping and iperf from %s to %s',
-                    params['hosts'][0], args.target_ssh_ip)
-                _measure_ping(args, out_dir, 1, params)
-                _measure_iperf(args, out_dir, 1, params)
+                pass
+                # log.debug(
+                #     'Measuring ping and iperf from %s to %s',
+                #     params['hosts'][0], args.target_ssh_ip)
+                # _measure_ping(args, out_dir, 1, params)
+                # _measure_iperf(args, out_dir, 1, params)
             for _ in range(args.ph_retries):
                 sec = 5
                 if not _measure_phnew(args, out_dir, 1, params):
@@ -728,10 +762,12 @@ if __name__ == '__main__':
     p.add_argument('--do-iperf-tcp', action='store_true')
     p.add_argument('--do-iperf-udp', action='store_true')
     p.add_argument('--experiment-list', type=str, required=True)
+    p.add_argument('--bg-host', type=str, default='nrl')
     args = p.parse_args()
     args.out_dir = os.path.abspath(args.out_dir)
     assert args.target_ssh_ip in INTERFACE_MAP
     assert os.path.isfile(args.experiment_list)
+    assert args.bg_host in IP_MAP
     param_sets = [_ for _ in param_sets_from_file(args.experiment_list)]
     log.debug('Read %d params from %s', len(param_sets), args.experiment_list)
     for params in param_sets:
