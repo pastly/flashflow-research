@@ -9,7 +9,7 @@
 #include "torclient.h"
 #include "sched.h"
 
-#define MBITS_TO_BYTES 1000*1000/8
+#define MAX_LOOPS_WITHOUT_PROGRESS 10
 
 void
 usage() {
@@ -170,6 +170,7 @@ int new_main(int argc, const char *argv[]) {
     int connecting_fds[MAX_NUM_CTRL_SOCKS];
     int setting_bw_fds[MAX_NUM_CTRL_SOCKS];
     int measuring_fds[MAX_NUM_CTRL_SOCKS];
+    unsigned loops_without_progress = 0;
     if (argc != 3) {
         //LOG("argc=%d\n", argc);
         usage();
@@ -193,6 +194,13 @@ int new_main(int argc, const char *argv[]) {
     }
     // Main loop
     while (!sched_finished()) {
+        if (loops_without_progress > MAX_LOOPS_WITHOUT_PROGRESS) {
+            // TODO: The right thing to do is to fail on the current
+            // measurements and start new ones. Not recovering gracefully is a
+            // big problem in this currently.
+            LOG("Went %u main loops without any forward progress", loops_without_progress);
+            return -1;
+        }
         unsigned new_m_id;
         while ((new_m_id = sched_next())) {
             // We are allowed to start a new measurement. Get the ball rolling
@@ -314,6 +322,7 @@ int new_main(int argc, const char *argv[]) {
             return -1;
         } else if (select_result == 0) {
             LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+            loops_without_progress++;
             continue;
         }
         struct ctrl_sock_meta *meta;
