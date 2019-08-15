@@ -1,7 +1,7 @@
-#he-nrl,ddns,india.do,amst.do-160s-750Mbps-463.2Mbps,463.2Mbps,463.2Mbps,463.2Mbps-defdefdefmax
-#he-amst.do-160s-250Mbps-478.2Mbps-defdefdefmax
-#he-nrl,ddns-160s-unlim-667.5Mbps,667.5Mbps-defdefdefmax
-#he-india.do,amst.do-160s-500Mbps-494.1Mbps,494.1Mbps-defdefdefmax
-
-#he-ddns-160s-unlim-667.5Mbps-defdefdefmax
-he-nrl,ddns-160s-unlim-667.5Mbps,667.5Mbps-defdefdefmax
+# To get a mult of 2.25 with 20% allowed error below and 5% error above ...
+# 2.25 * (1+.05)/(1-.2)
+# Thus 250 * 2.25 * (1.05/0.8) = 738.3
+he-amst.do-10-250Mbps-738Mbps-defdefdefmax
+he-amst.do-25-250Mbps-738Mbps-defdefdefmax
+he-amst.do-33-250Mbps-738Mbps-defdefdefmax
+he-amst.do-50-250Mbps-738Mbps-defdefdefmax

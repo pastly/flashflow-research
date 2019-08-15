@@ -193,6 +193,7 @@ def param_sets_from_file(fname):
                 'host_tor_bws': [], 'tor_bw': '',
                 'mem_def': 'def', 'mem_max': 'def',
                 'num_c_overall': 0,
+                'bg_pcent': 0,
             }
             # make sure its a match
             pat = r'.*(he-.*-defdefdefmax)/?.*'
@@ -202,15 +203,15 @@ def param_sets_from_file(fname):
             assert match.startswith('he-')
             assert match.endswith('-defdefdefmax')
             parts = match.split('-')
-            target, measurers, n_socks, target_bw_str, measurers_bw_str, mem = parts
+            target, measurers, bg_pcent, target_bw_str, measurers_bw_str, mem = parts
             # set stuff fetched from the line
             assert target == 'he'
             out['hosts'] = measurers.split(',')
-            assert n_socks == '160s'
-            assert n_socks.endswith('s')
-            out['num_c_overall'] = int(n_socks[:n_socks.index('s')])
+            assert int(bg_pcent) >= 1 and int(bg_pcent) <= 99
+            out['num_c_overall'] = 160 # int(n_socks[:n_socks.index('s')])
             out['tor_bw'] = target_bw_str
             out['host_tor_bws'] = measurers_bw_str.split(',')
+            out['bg_pcent'] = int(bg_pcent)
             assert mem == 'defdefdefmax'
             # set other stuff stuff
             out['host_bws'] = ['unlim'] * len(out['hosts'])
@@ -224,6 +225,7 @@ def param_sets_from_file(fname):
             assert out['mem_def']
             assert out['mem_max']
             assert out['num_c_overall']
+            assert out['bg_pcent'] >= 1 and out['bg_pcent'] <= 99
             yield out
 
 def _split_x_by_y(x, y):
@@ -370,9 +372,16 @@ def _measure_ping(args, out_dir, i, params):
     log.debug('ret: %s', ret)
 
 
-def _start_bwevents(args):
+def _start_bwevents(args, params):
     script = 'start-bwevents.sh'
-    cmd = 'bash -ls {net_dir} {fname}'.format(
+    if params['tor_bw'] == 'unlim':
+        tor_bw = 125000000
+    else:
+        tor_bw = max(_bw_str_to_bytes(params['tor_bw']), 76800)
+    assert params['bg_pcent'] >= 1 and params['bg_pcent'] <= 99
+    cmd = 'bash -ls {bw} {bg_pcent} {fname}'.format(
+        bw=tor_bw,
+        bg_pcent=params['bg_pcent'],
         net_dir=args.target_tor_net_dir,
         fname='/tmp/bwevents.log',
     )
@@ -437,9 +446,9 @@ def _stop_phnew_tor_clients(args, params):
 
 def _measure_phnew(args, out_dir, i, params):
     try:
-        _start_tor(args, params)
+        # _start_tor(args, params)
         _start_phnew_tor_clients(args, params)
-        _start_bwevents(args)
+        _start_bwevents(args, params)
         _start_dstat(args, params)
         os.makedirs(out_dir, exist_ok=True)
         hosts, host_bws, host_socks, host_ips, host_ports = [], [], [], [], []
@@ -479,11 +488,17 @@ def _measure_phnew(args, out_dir, i, params):
             h_ips=host_ips,
             h_ports=host_ports,
         )
+        log.info('Sleeping for 60 seconds for baseline bg traffic data collection')
+        time.sleep(60)
         script = 'measure-ph.sh'
         cmd = ['ssh', args.coord_ssh_ip, cmd]
         log.debug('Executing: %s (with %s as input)', cmd, script)
         ret = subprocess.call(cmd, stdin=open(script, 'rt'))
         log.debug('ret: %s', ret)
+        _stop_phnew_tor_clients(args, params)
+        if ret == 0:
+            log.info('Sleeping for 60 seconds for after-measurement bg traffic data collection')
+            time.sleep(60)
         _stop_dstat(args, params)
         _stop_bwevents(args)
         if ret != 0:
@@ -522,7 +537,7 @@ def _measure_phnew(args, out_dir, i, params):
         _stop_dstat(args, params)
         _stop_bwevents(args)
         _stop_phnew_tor_clients(args, params)
-        _stop_tor(args)
+        # _stop_tor(args)
 
 
 def _start_dstat(args, params):
@@ -628,8 +643,8 @@ def _stop_iperf_server(args):
 
 def _stop_ph(args, params):
     procs, rets = [], []
-    hosts = params['hosts']
-    hosts += [args.coord_ssh_ip]
+    hosts = copy.copy(params['hosts'])
+    hosts += [args.coord_ssh_ip, args.bg_host]
     if args.bg_host not in hosts:
         hosts += [args.bg_host]
     for host in hosts:
@@ -690,10 +705,10 @@ def _decompress_all(dname):
 def main(args):
     try:
         for param_idx, params in enumerate(param_sets):
-            out_dir_part = '{target}-{measurers}-{s}s-{t_bw}-{m_bw}-{mem_def}def{mem_max}max'.format(
+            out_dir_part = '{target}-{measurers}-{bg}-{t_bw}-{m_bw}-{mem_def}def{mem_max}max'.format(
                 target=args.target_ssh_ip,
                 measurers=','.join(params['hosts']),
-                s=params['num_c_overall'],
+                bg=params['bg_pcent'],
                 t_bw=params['tor_bw'],
                 m_bw=','.join(params['host_tor_bws']),
                 mem_def=params['mem_def'],
@@ -743,7 +758,8 @@ if __name__ == '__main__':
     p.add_argument('--target-ssh-ip', type=str, required=True)
     p.add_argument(
         '--target-fp', type=str,
-        default='65622D2CEB1746755988FBC2068F04DCD34AE7A8')
+        default='859A5CE99951A3C42958AF88CE2761BD48525B16') # Tfinn3
+        # default='2767A9DB46503D09FD0415BA1296B36318520F08') # TFinn1
 
     p.add_argument('--coord-ssh-ip', type=str, default='tityos')
     p.add_argument(
@@ -756,16 +772,16 @@ if __name__ == '__main__':
                    help='path to store results in')
     p.add_argument('--ph-retries', type=int, default=5)
     p.add_argument('--ph-password', type=str, default='password')
-    p.add_argument('--ph-dur', type=int, default=60)
+    p.add_argument('--ph-dur', type=int, default=30)
     p.add_argument('--iperf-dur', type=int, default=60)
     p.add_argument('--num-pings', type=int, default=60)
     p.add_argument('--do-iperf-tcp', action='store_true')
     p.add_argument('--do-iperf-udp', action='store_true')
     p.add_argument('--experiment-list', type=str, required=True)
-    p.add_argument('--bg-host', type=str, default='nrl')
+    p.add_argument('--bg-host', type=str, default='amst.do')
     args = p.parse_args()
     args.out_dir = os.path.abspath(args.out_dir)
-    assert args.target_ssh_ip in INTERFACE_MAP
+    # assert args.target_ssh_ip in INTERFACE_MAP
     assert os.path.isfile(args.experiment_list)
     assert args.bg_host in IP_MAP
     param_sets = [_ for _ in param_sets_from_file(args.experiment_list)]
