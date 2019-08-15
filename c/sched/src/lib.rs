@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
-use std::iter::FromIterator;
+use std::iter::{repeat, FromIterator};
 use std::mem;
 use std::sync::Mutex;
 
@@ -139,16 +139,20 @@ impl Measurement {
 pub extern "C" fn sched_new(fname: *const c_char) -> usize {
     let fname = unsafe { CStr::from_ptr(fname).to_str() }
         .expect("Got invalid string from C in sched_new()");
-    let file = OpenOptions::new()
-        .read(true)
-        .open(fname)
-        .expect("Could not open file in sched_new()");
-    let measurements: Vec<Measurement> = BufReader::new(&file)
-        .lines()
-        .map(|l| Measurement::new_from_string(l.unwrap()))
-        .filter(|m| m.is_some())
-        .map(|m| m.unwrap())
-        .collect();
+    if fname.ends_with(".txt") {
+        sched_new_from_txt(fname);
+    } else if fname.ends_with(".json") {
+        sched_new_from_json(fname);
+    } else {
+        panic!("Do not know how to read the provided schedule of measurements. TXT or JSON please");
+    }
+    if sched_next_internal(false) == 0 {
+        panic!("No measurements with 0 depends exist");
+    }
+    sched_num()
+}
+
+fn check_and_insert_measurements(measurements: Vec<Measurement>) {
     let m_ids: HashSet<u32, RandomState> = HashSet::from_iter(measurements.iter().map(|m| m.id));
     if m_ids.len() != measurements.len() {
         panic!("Every measurement must have unique ID in sched_new()");
@@ -171,10 +175,79 @@ pub extern "C" fn sched_new(fname: *const c_char) -> usize {
             msms.insert(m.id, m);
         }
     }
-    if sched_next_internal(false) == 0 {
-        panic!("No measurements with 0 depends exist");
+}
+
+fn sched_new_from_txt(fname: &str) {
+    let file = OpenOptions::new()
+        .read(true)
+        .open(fname)
+        .expect("Could not open file in sched_new_from_txt()");
+    let measurements: Vec<Measurement> = BufReader::new(&file)
+        .lines()
+        .map(|l| Measurement::new_from_string(l.unwrap()))
+        //.filter(|m| m.is_some()) // we want to panic if unwrapping fails
+        .map(|m| m.unwrap())
+        .collect();
+    check_and_insert_measurements(measurements);
+}
+
+fn sched_new_from_json(fname: &str) {
+    let file = OpenOptions::new()
+        .read(true)
+        .open(fname)
+        .expect("Could not open file in sched_new_from_json()");
+    let aaron_sched: Vec<HashMap<String, HashMap<String, f64>>> =
+        serde_json::from_reader(file).unwrap();
+    let mut m_strings = vec![];
+    let mut next_msm_id = 1;
+    let mut last_m_id_set_str = "0".to_string();
+    for set in aaron_sched.iter() {
+        let mut new_m_id_set = vec![];
+        for fp in set.keys() {
+            let mut classes = vec![];
+            let mut bws = vec![];
+            for (cls, bw) in set.get(fp).unwrap() {
+                classes.push(cls.clone());
+                bws.push(((bw / 8.0).round() as u32).to_string());
+            }
+            let mut conn = 160 / (classes.len() as u32);
+            if conn * (classes.len() as u32) < 160 {
+                conn += 1;
+            }
+            assert!(conn * (classes.len() as u32) >= 160);
+            let s = format!(
+                "{m_id} {fp} {dur} {cls} {bw} {conn} {dep}",
+                m_id = next_msm_id,
+                fp = fp,
+                dur = 30,
+                cls = classes.join(","),
+                bw = bws.join(","),
+                conn = repeat(conn)
+                    .take(classes.len())
+                    .map(|n| n.to_string())
+                    .collect::<Vec<String>>()
+                    .join(","),
+                dep = last_m_id_set_str,
+            );
+            //println!("{:?} {:?}", classes, bws);
+            //println!("{}", s);
+            m_strings.push(s);
+            new_m_id_set.push(next_msm_id);
+            next_msm_id += 1;
+        }
+        last_m_id_set_str = new_m_id_set
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<String>>()
+            .join(",");
     }
-    sched_num()
+    let measurements: Vec<Measurement> = m_strings
+        .into_iter()
+        .map(Measurement::new_from_string)
+        //.filter(|m| m.is_some()) // we want to panic if unwrapping fails
+        .map(|m| m.unwrap())
+        .collect();
+    check_and_insert_measurements(measurements);
 }
 
 #[no_mangle]
@@ -205,7 +278,7 @@ pub extern "C" fn sched_num_incomplete() -> usize {
         .count()
 }
 
-fn sched_next_internal(mark:  bool) -> u32 {
+fn sched_next_internal(mark: bool) -> u32 {
     let mut msms = MSMS.lock().unwrap();
     for m in msms.values_mut() {
         if m.state == State::Waiting && m.depends.len() == m.finished_depends.len() {
@@ -220,7 +293,7 @@ fn sched_next_internal(mark:  bool) -> u32 {
 
 #[no_mangle]
 pub extern "C" fn sched_next() -> u32 {
-    return sched_next_internal(true);
+    sched_next_internal(true)
 }
 
 #[no_mangle]
