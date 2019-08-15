@@ -162,7 +162,7 @@ is_totally_done(unsigned m_id, const struct ctrl_sock_meta metas[], const int nu
     return 1;
 }
 
-int new_main(int argc, const char *argv[]) {
+int main(int argc, const char *argv[]) {
     struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
     unsigned known_m_ids[MAX_NUM_CTRL_SOCKS];
     int num_known_m_ids = 0;
@@ -386,9 +386,4 @@ int new_main(int argc, const char *argv[]) {
     }
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     return 0;
-}
-
-int
-main(const int argc, const char *argv[]) {
-    return new_main(argc, argv);
 }
