@@ -2,53 +2,61 @@
 
 PLATFORM := $(shell uname)
 
-CFLAGS := -Wall -O2 -ggdb -std=gnu99
+#CFLAGS := -Wall -O2 -ggdb -std=gnu99 -fPIC
 CC := gcc
 
-RS_SRC := \
-	sched/src/*.rs \
 
-ifeq ($(PLATFORM),Darwin)
-RS_LIB := \
-	sched/target/release/libsched.dylib
-EXTRA_ARGS :=
-else
-RS_LIB := \
-	sched/target/release/libsched.so
-EXTRA_ARGS := \
-	-Wl,-rpath,\$$ORIGIN/sched/target/release
-endif
+CFLAGS := $(CFLAGS) -Wall -pipe -ggdb -O2 -DPIC -fPIC -std=gnu99 -rdynamic \
+	-U_FORTIFY_SOURCE -fno-inline -fno-strict-aliasing \
+	-Wl,--no-as-needed -fno-omit-frame-pointer
+LDFLAGS := -lpthread -ldl
 
-SRC := \
-	torclient.c \
-	common.c \
-	#flashflow.c \
+RS_SRC := sched/src/*.rs \
+RS_LIB := sched/target/debug/libsched.so
 
-OBJ := \
-	torclient.o \
-	common.o \
+all: libflashflow.so
 
-all: flashflow
+flashflow: flashflow.o torclient.o common.o sched/target/debug/libsched.a
+	$(CC) -o $@ $(CFLAGS) -pie -fPIE $^ $(LDFLAGS)
 
-include $(SRC:.c=.d)
+libflashflow.so: flashflow.o torclient.o common.o sched/target/debug/libsched.a
+	$(CC) -o $@ $(CFLAGS) -shared $^ $(LDFLAGS)
 
-sched.h: sched/src/*.rs
-	cd sched && \
-	cbindgen --lang C --crate sched --output ../$@ || \
-	rustc -Z parse-only ../$^
+sched/target/debug/libsched.a: sched/src/*.rs sched/Cargo.*
+	cd sched && cargo build
 
-%.d: %.c
-	set -e; rm -f $@; \
-	$(CC) -MM $(CPPFLAGS) $< > $@.$$$$; \
-	sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' < $@.$$$$ > $@; \
-	rm -f $@.$$$$
+%.o: %.c
+	$(CC) $(CFLAGS) -o $@ -c $<
 
 clean:
-	rm -rf flashflow *.d *.d.* *.o *.dSYM sched.h $(RS_LIB)
+	rm -fv flashflow *.o sched/target/*/libsched.*
 
-$(RS_LIB): $(RS_SRC)
-	cd sched && \
-	cargo build --release
-
-flashflow: flashflow.c $(OBJ) sched.h $(RS_LIB)
-	$(CC) $(CFLAGS) flashflow.c $(OBJ) -o $@ -lsched -L./sched/target/release $(EXTRA_ARGS)
+#.PHONY: all clean
+#
+#PLATFORM := $(shell uname)
+#
+##CFLAGS := -Wall -O2 -ggdb -std=gnu99 -fPIC
+#CC := gcc
+#
+#
+#CFLAGS := $(CFLAGS) -Wall -pipe -ggdb -O2 -DPIC -fPIC -std=gnu99 -rdynamic \
+#	-U_FORTIFY_SOURCE -fno-inline -fno-strict-aliasing \
+#	-Wl,--no-as-needed -fno-omit-frame-pointer
+#LDFLAGS := -lpthread -ldl
+#
+#RS_SRC := sched/src/*.rs \
+#RS_LIB := sched/target/debug/libsched.so
+#
+#all: flashflow
+#
+#flashflow: flashflow.o torclient.o common.o sched/target/debug/libsched.a
+#	$(CC) -o $@ $(CFLAGS) -pie -fPIE $^ $(LDFLAGS)
+#
+#sched/target/debug/libsched.a: sched/src/*.rs sched/Cargo.*
+#	cd sched && cargo build
+#
+#%.o: %.c
+#	$(CC) $(CFLAGS) -o $@ -c $<
+#
+#clean:
+#	rm -fv flashflow *.o sched/target/*/libsched.*

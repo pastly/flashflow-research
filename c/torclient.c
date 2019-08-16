@@ -185,24 +185,34 @@ tc_make_socket(struct ctrl_sock_meta *meta) {
     tc_assert_state(meta, csm_st_invalid);
     int s;
     struct addrinfo hints, *addr;
+    LOG("calling socket()\n");
     s = socket(PF_INET, SOCK_STREAM, 0);
     if (s < 0) {
+        LOG("error calling socket()\n");
         perror("Error socket() control socket");
         return -1;
     }
+    LOG("calling memset()\n");
     memset(&hints, 0, sizeof(hints));
-    hints.ai_family = PF_UNSPEC;
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo(meta->host, meta->port, &hints, &addr) != 0) {
+    //hints.ai_flags |= AI_NUMERICSERV;
+    LOG("calling getaddrinfo()\n");
+    //if (getaddrinfo(meta->host, meta->port, &hints, &addr) != 0) {
+    if (getaddrinfo(meta->host, NULL, &hints, &addr) != 0) {
+        LOG("error calling getaddrinfo()\n");
         perror("Error getaddrinfo()");
         return -1;
     }
+    ((struct sockaddr_in *)addr->ai_addr)->sin_port = htons(atoi(meta->port));
+    LOG("calling connect()\n");
     if (connect(s, addr->ai_addr, addr->ai_addrlen) != 0) {
         LOG("Could not connect to %s:%s ... ", meta->host, meta->port);
         perror("Error connect() control socket");
         return -1;
     }
     meta->fd = s;
+    LOG("going to change state\n");
     tc_change_state(meta, csm_st_connected);
     return s;
 }
@@ -412,6 +422,7 @@ int
 tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char *class) {
     for (int i = 0; i < num_metas; i++) {
         if (!strcmp(metas[i].class, class) && !metas[i].current_m_id) {
+            LOG("Trying to make socket to %s:%s\n", metas[i].host, metas[i].port);
             if (tc_make_socket(&metas[i]) < 0) {
                 //LOG("Unable to open socket to %s:%s\n", metas[i].host, metas[i].port);
                 continue;
