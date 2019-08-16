@@ -248,7 +248,7 @@ fn sched_new_from_json(fname: &str) {
                 dep = last_m_id_set_str,
             );
             //println!("{:?} {:?}", classes, bws);
-            //println!("{}", s);
+            println!("{}", s);
             m_strings.push(s);
             new_m_id_set.push(next_msm_id);
             next_msm_id += 1;
