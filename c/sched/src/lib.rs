@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader};
-use std::iter::{repeat, FromIterator};
+use std::iter::FromIterator;
 use std::mem;
 use std::sync::Mutex;
 
@@ -206,15 +206,33 @@ fn sched_new_from_json(fname: &str) {
         for fp in set.keys() {
             let mut classes = vec![];
             let mut bws = vec![];
+            let mut conns = vec![];
             for (cls, bw) in set.get(fp).unwrap() {
                 classes.push(cls.clone());
                 bws.push(((bw / 8.0).round() as u32).to_string());
             }
-            let mut conn = 160 / (classes.len() as u32);
-            if conn * (classes.len() as u32) < 160 {
-                conn += 1;
+            let has_bg = classes.contains(&"bg".to_string());
+            let conn = if has_bg {
+                let mut conn = 160 / ((classes.len()-1) as u32);
+                if conn * ((classes.len()-1) as u32) < 160 {
+                    conn += 1;
+                }
+                conn
+            } else {
+                let mut conn = 160 / ((classes.len()) as u32);
+                if conn * ((classes.len()) as u32) < 160 {
+                    conn += 1;
+                }
+                conn
+            };
+            for cls in classes.iter() {
+                if cls == "bg" {
+                    conns.push(1);
+                } else {
+                    conns.push(conn);
+                }
             }
-            assert!(conn * (classes.len() as u32) >= 160);
+            assert_eq!(conns.iter().sum::<u32>(), if has_bg { 161 } else { 160 });
             let s = format!(
                 "{m_id} {fp} {dur} {cls} {bw} {conn} {dep}",
                 m_id = next_msm_id,
@@ -222,8 +240,8 @@ fn sched_new_from_json(fname: &str) {
                 dur = 30,
                 cls = classes.join(","),
                 bw = bws.join(","),
-                conn = repeat(conn)
-                    .take(classes.len())
+                conn = conns
+                    .into_iter()
                     .map(|n| n.to_string())
                     .collect::<Vec<String>>()
                     .join(","),
