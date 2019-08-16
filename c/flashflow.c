@@ -180,6 +180,7 @@ int main(int argc, const char *argv[]) {
     const char *client_fname = argv[2];
     // number of tor clients read from file
     int num_tor_clients;
+    LOG("Reading clients from %s\n", client_fname);
     if ((num_tor_clients = tc_client_file_read(client_fname, metas)) < 1) {
         LOG("Error reading %s or it was empty\n", client_fname);
         return -1;
@@ -188,6 +189,7 @@ int main(int argc, const char *argv[]) {
     for (int i = 0; i < num_tor_clients; i++) {
         LOG("%s at %s:%s\n", metas[i].class, metas[i].host, metas[i].port);
     }
+    LOG("Reading experiments from %s\n", fp_fname);
     if (!sched_new(fp_fname)) {
         LOG("Empty sched from %s or error\n", fp_fname);
         return -1;
