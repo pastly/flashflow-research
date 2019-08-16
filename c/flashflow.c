@@ -219,14 +219,20 @@ int main(int argc, const char *argv[]) {
             assert(fill_msm_params(&p, known_m_ids[i]));
             // for authed -> tell connect to target
             if (is_totally_authed(known_m_ids[i], metas, num_tor_clients)) {
-                unsigned next_nconn = 0;
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
-                        assert(tc_tell_connect(&metas[j], p.fp, p.m_nconn[next_nconn++]));
-                        tc_assert_state(&metas[j], csm_st_told_connect_target);
+                        for (int k = 0; k < p.num_m; k++) {
+                            if (!strcmp(p.m[k], metas[j].class) && p.m_nconn[k]) {
+                                assert(tc_tell_connect(&metas[j], p.fp, p.m_nconn[k]));
+                                tc_assert_state(&metas[j], csm_st_told_connect_target);
+                                p.m_nconn[k] = 0;
+                            }
+                        }
                     }
                 }
-                assert(next_nconn == p.num_m);
+                for (int j = 0; j < p.num_m; j++) {
+                    assert(!p.m_nconn[j]);
+                }
             }
             // for connected to target -> set bw
             if (is_totally_connected_target(known_m_ids[i], metas, num_tor_clients)) {
