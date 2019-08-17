@@ -317,7 +317,17 @@ int main(int argc, const char *argv[]) {
                 unsigned next_bw = 0;
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
-                        assert(tc_set_bw_rate(&metas[j], p.m_bw[next_bw++]));
+                        if (!tc_set_bw_rate(&metas[j], p.m_bw[next_bw++])) {
+                            LOG("Unable to tell fd=%d to set its bw rate\n", metas[j].fd);
+                            num_known_m_ids = measurement_failed(
+                                known_m_ids[i], known_m_ids, num_known_m_ids,
+                                metas, num_tor_clients);
+                            count_failure++;
+                            // jump to the end of the main loop. We just moved
+                            // the contents of known_m_ids around and may screw
+                            // ourselves up if we were to continue looping here.
+                            goto main_loop_end;
+                        }
                         tc_assert_state(&metas[j], csm_st_setting_bw);
                     }
                 }
@@ -329,7 +339,17 @@ int main(int argc, const char *argv[]) {
                 int num_told = 0;
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
-                        assert(tc_start_measurement(&metas[j], p.dur));
+                        if (!tc_start_measurement(&metas[j], p.dur)) {
+                            LOG("Unable to tell fd=%d to start measuring\n", metas[j].fd);
+                            num_known_m_ids = measurement_failed(
+                                known_m_ids[i], known_m_ids, num_known_m_ids,
+                                metas, num_tor_clients);
+                            count_failure++;
+                            // jump to the end of the main loop. We just moved
+                            // the contents of known_m_ids around and may screw
+                            // ourselves up if we were to continue looping here.
+                            goto main_loop_end;
+                        }
                         tc_assert_state(&metas[j], csm_st_measuring);
                         num_told++;
                     }
