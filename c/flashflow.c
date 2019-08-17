@@ -199,8 +199,8 @@ measurement_failed(
     // replace the given measurement id with whatever is the last one in the
     // list of all measurement ids
     for (int i = 0; i < num_m; i++) {
-        LOG("Replacing m_id=%u (idx=%d) with m_id=%u (idx=%d)\n", m_ids[i], i, m_ids[num_m-1], num_m-1);
         if (m_ids[i] == m_id) {
+            LOG("Replacing m_id=%u (idx=%d) with m_id=%u (idx=%d)\n", m_ids[i], i, m_ids[num_m-1], num_m-1);
             m_ids[i] = m_ids[--num_m];
             break;
         }
