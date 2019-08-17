@@ -289,7 +289,18 @@ int main(int argc, const char *argv[]) {
                         // unassigned and matches tor client J's class.
                         for (int k = 0; k < p.num_m; k++) {
                             if (!strcmp(p.m[k], metas[j].class) && !p.m_assigned[k]) {
-                                assert(tc_tell_connect(&metas[j], p.fp, p.m_nconn[k]));
+                                if (!tc_tell_connect(&metas[j], p.fp, p.m_nconn[k])) {
+                                    LOG("Unable to to tell fd=%d to connect to target\n", metas[j].fd);
+                                    num_known_m_ids = measurement_failed(
+                                        known_m_ids[i], known_m_ids, num_known_m_ids,
+                                        metas, num_tor_clients);
+                                    count_failure++;
+                                    // jump to the end of the main loop. We just
+                                    // moved the contents of known_m_ids around
+                                    // and may screw ourselves up if we were to
+                                    // continue looping here.
+                                    goto main_loop_end;
+                                }
                                 tc_assert_state(&metas[j], csm_st_told_connect_target);
                                 p.m_assigned[k] = 1;
                                 break;
