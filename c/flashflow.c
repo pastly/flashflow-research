@@ -28,6 +28,7 @@ fill_msm_params(struct msm_params *p, const unsigned m_id) {
     p->fp = sched_get_fp(p->id);
     p->dur = sched_get_dur(p->id);
     p->num_m = sched_get_hosts(p->id, &p->m, &p->m_bw, &p->m_nconn);
+    p->m_assigned = calloc(p->num_m, sizeof(int8_t));
     if (!p->fp) {
         LOG("Should have gotten a relay fp\n");
         return 0;
@@ -41,6 +42,14 @@ fill_msm_params(struct msm_params *p, const unsigned m_id) {
         return 0;
     }
     return 1;
+}
+void
+free_msm_params(struct msm_params *p) {
+    if (!p) {
+        return;
+    }
+    sched_free_hosts(p->m, p->m_bw, p->m_nconn, p->num_m);
+    free(p->m_assigned);
 }
 
 int
@@ -219,19 +228,25 @@ int main(int argc, const char *argv[]) {
             assert(fill_msm_params(&p, known_m_ids[i]));
             // for authed -> tell connect to target
             if (is_totally_authed(known_m_ids[i], metas, num_tor_clients)) {
+                // loop through all known tor clients and look for ones that can
+                // help
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
+                        // this tor client J is for the current measurement I.
+                        // Loop over the msm params and see if the K'th one is
+                        // unassigned and matches tor client J's class.
                         for (int k = 0; k < p.num_m; k++) {
-                            if (!strcmp(p.m[k], metas[j].class) && p.m_nconn[k]) {
+                            if (!strcmp(p.m[k], metas[j].class) && !p.m_assigned[k]) {
                                 assert(tc_tell_connect(&metas[j], p.fp, p.m_nconn[k]));
                                 tc_assert_state(&metas[j], csm_st_told_connect_target);
-                                p.m_nconn[k] = 0;
+                                p.m_assigned[k] = 1;
+                                break;
                             }
                         }
                     }
                 }
                 for (int j = 0; j < p.num_m; j++) {
-                    assert(!p.m_nconn[j]);
+                    assert(p.m_assigned[j]);
                 }
             }
             // for connected to target -> set bw
@@ -270,7 +285,7 @@ int main(int argc, const char *argv[]) {
                 sched_mark_done(known_m_ids[i]);
                 known_m_ids[i--] = known_m_ids[--num_known_m_ids];
             }
-            sched_free_hosts(p.m, p.m_bw, p.m_nconn, p.num_m);
+            free_msm_params(&p);
         }
         fd_set read_set;
         FD_ZERO(&read_set);

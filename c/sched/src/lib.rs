@@ -91,7 +91,7 @@ impl Measurement {
                         .filter(|i| *i > 0)
                         .collect()
                 }
-                _ => return None,
+                _ => { panic!("Too many \"words\" on a line"); }
             }
             word_num += 1;
         }
@@ -99,11 +99,10 @@ impl Measurement {
             panic!("No measurement can have ID 0");
         }
         if depends.contains(&id) {
-            //return None;
             panic!("Measurement cannot depend on itself");
         }
         if host_class.len() != host_bw.len() || host_class.len() != host_conns.len() {
-            return None;
+            panic!("Number of host classes, bws, and conns are not the same");
         }
         let mut hosts = vec![];
         for i in 0..host_class.len() {
@@ -185,7 +184,7 @@ fn sched_new_from_txt(fname: &str) {
     let measurements: Vec<Measurement> = BufReader::new(&file)
         .lines()
         .map(|l| Measurement::new_from_string(l.unwrap()))
-        //.filter(|m| m.is_some()) // we want to panic if unwrapping fails
+        .filter(|m| m.is_some()) // if there was an invalid measurement, would have panic. None for comment/empty lines
         .map(|m| m.unwrap())
         .collect();
     check_and_insert_measurements(measurements);
@@ -262,7 +261,7 @@ fn sched_new_from_json(fname: &str) {
     let measurements: Vec<Measurement> = m_strings
         .into_iter()
         .map(Measurement::new_from_string)
-        //.filter(|m| m.is_some()) // we want to panic if unwrapping fails
+        .filter(|m| m.is_some()) // if there was an invalid measurement, would have panic. None for comment/empty lines
         .map(|m| m.unwrap())
         .collect();
     check_and_insert_measurements(measurements);

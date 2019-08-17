@@ -50,6 +50,7 @@ struct msm_params {
     char **m;
     unsigned *m_bw;
     unsigned *m_nconn;
+    int8_t *m_assigned;
 };
 
 const char *csm_st_str(const enum csm_state s);
