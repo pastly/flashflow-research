@@ -377,7 +377,8 @@ int main(int argc, const char *argv[]) {
         int select_result = select(max_fd+1, &read_set, NULL, NULL, &select_timeout_remaining);
         if (select_result < 0) {
             perror("Error on select()");
-            return -1;
+            loops_without_progress++;
+            continue;
         } else if (select_result == 0) {
             LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
             loops_without_progress++;
