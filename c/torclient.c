@@ -450,6 +450,11 @@ tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char
     return -1;
 }
 
+void
+tc_mark_failed(struct ctrl_sock_meta *meta) {
+    tc_change_state(meta, csm_st_failed);
+}
+
 int
 tc_finished_with_meta(struct ctrl_sock_meta *meta) {
     LOG("Finished with %s (%s:%s)\n", meta->class, meta->host, meta->port);

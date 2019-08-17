@@ -13,5 +13,6 @@ int tc_start_measurement(struct ctrl_sock_meta *meta, const unsigned dur);
 int tc_output_result(struct ctrl_sock_meta *meta, const unsigned m_id, const char *fp);
 int tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char *class);
 int tc_finished_with_meta(struct ctrl_sock_meta *meta);
+void tc_mark_failed(struct ctrl_sock_meta *meta);
 void tc_assert_state(const struct ctrl_sock_meta *meta, const enum csm_state state);
 #endif /* !defined(FF_CLIENTFILE_H) */

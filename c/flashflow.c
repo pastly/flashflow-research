@@ -206,7 +206,7 @@ measurement_failed(
     // cleanup all tor client metas that were a part of thie measurement
     for (int i = 0; i < num_metas; i++) {
         if (metas[i].current_m_id == m_id) {
-            tc_change_state(&metas[i], csm_st_failed);
+            tc_mark_failed(&metas[i]);
             tc_finished_with_meta(&metas[i]);
         }
     }
