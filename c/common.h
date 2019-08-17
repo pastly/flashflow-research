@@ -29,6 +29,7 @@ enum csm_state {
     csm_st_bw_set,
     csm_st_measuring,
     csm_st_done,
+    csm_st_failed,
 };
 
 struct ctrl_sock_meta {

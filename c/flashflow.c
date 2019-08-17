@@ -171,6 +171,37 @@ is_totally_done(unsigned m_id, const struct ctrl_sock_meta metas[], const int nu
     return 1;
 }
 
+int
+measurement_failed(
+        unsigned m_id,
+        unsigned m_ids[], int num_m,
+        struct ctrl_sock_meta metas[], const int num_metas) {
+    LOG("FAILED measurement id=%u. Cleaning up.\n", m_id);
+    sched_mark_done(m_id);
+    if (num_m <= 0) {
+        LOG("WARN: called measurement_failed() with %d measurements. "
+            "Expected at least 1.\n", num_m);
+        return num_m;
+    }
+    // replace the given measurement id with whatever is the last one in the
+    // list of all measurement ids
+    for (int i = 0; i < num_m; i++) {
+        LOG("Replacing m_id=%u (idx=%d) with m_id=%u (idx=%d)\n", m_ids[i], i, m_ids[num_m-1], num_m-1);
+        if (m_ids[i] == m_id) {
+            m_ids[i] = m_ids[--num_m];
+            break;
+        }
+    }
+    // cleanup all tor client metas that were a part of thie measurement
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id == m_id) {
+            tc_change_state(&metas[i], csm_st_failed);
+            tc_finished_with_meta(&metas[i]);
+        }
+    }
+    return num_m;
+}
+
 int main(int argc, const char *argv[]) {
     struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
     unsigned known_m_ids[MAX_NUM_CTRL_SOCKS];
@@ -392,7 +423,9 @@ int main(int argc, const char *argv[]) {
                 }
                 if (!tc_did_set_bw_rate(meta)) {
                     LOG("Unable to tell fd=%d to set its bw\n", setting_bw_fds[i]);
-                    return -1;
+                    num_known_m_ids = measurement_failed(
+                        meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_bw_set);
             }
@@ -410,6 +443,8 @@ int main(int argc, const char *argv[]) {
             }
         }
         //LOG("Would do stuff now\n");
+main_loop_end:
+        (int)1;
     }
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     return 0;

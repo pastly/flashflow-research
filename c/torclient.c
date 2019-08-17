@@ -26,6 +26,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             }; break;
         case csm_st_connected:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_authing:
                     goto tc_good_state_change; break;
                 default:
@@ -33,6 +34,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             }; break;
         case csm_st_authing:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_authed:
                     goto tc_good_state_change; break;
                 default:
@@ -41,6 +43,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_authed:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_told_connect_target:
                     goto tc_good_state_change; break;
                 default:
@@ -49,6 +52,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_told_connect_target:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_connected_target:
                     goto tc_good_state_change; break;
                 default:
@@ -57,6 +61,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_connected_target:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_setting_bw:
                     goto tc_good_state_change; break;
                 default:
@@ -65,6 +70,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_setting_bw:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_bw_set:
                     goto tc_good_state_change; break;
                 default:
@@ -73,6 +79,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_bw_set:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_measuring:
                     goto tc_good_state_change; break;
                 default:
@@ -81,6 +88,7 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             break;
         case csm_st_measuring:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_done:
                     goto tc_good_state_change; break;
                 default:
@@ -88,6 +96,13 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
             };
             break;
         case csm_st_done:
+            switch (new_state) {
+                case csm_st_invalid:
+                    goto tc_good_state_change; break;
+                default:
+                    goto tc_bad_state_change; break;
+            }
+        case csm_st_failed:
             switch (new_state) {
                 case csm_st_invalid:
                     goto tc_good_state_change; break;
