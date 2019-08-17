@@ -438,7 +438,7 @@ int main(int argc, const char *argv[]) {
                     return -1;
                 }
                 if (!tc_connected_socket(meta)) {
-                    LOG("Unable to to tell fd=%d to connect to target\n", connecting_fds[i]);
+                    LOG("fd=%d was unable to connect to target\n", connecting_fds[i]);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     count_failure++;
@@ -461,7 +461,7 @@ int main(int argc, const char *argv[]) {
                     return -1;
                 }
                 if (!tc_did_set_bw_rate(meta)) {
-                    LOG("Unable to tell fd=%d to set its bw\n", setting_bw_fds[i]);
+                    LOG("fd=%d was unable to set its bw\n", setting_bw_fds[i]);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     count_failure++;
