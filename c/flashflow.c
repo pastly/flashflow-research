@@ -240,7 +240,7 @@ int main(int argc, const char *argv[]) {
             // TODO: The right thing to do is to fail on the current
             // measurements and start new ones. Not recovering gracefully is a
             // big problem in this currently.
-            LOG("Went %u main loops without any forward progress", loops_without_progress);
+            LOG("Went %u main loops without any forward progress. Giving up on life.\n", loops_without_progress);
             return -1;
         }
         unsigned new_m_id;
