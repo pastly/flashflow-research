@@ -171,6 +171,17 @@ is_totally_done(unsigned m_id, const struct ctrl_sock_meta metas[], const int nu
     return 1;
 }
 
+/**
+ * A measurement failed. Give its id. Tell the sched that the measurement is
+ * done. This will remove it from the given m_ids array. Set all the metas with
+ * the given m_id as failed and mark them as finished. Returns the new number
+ * of m_ids (note if it was 1, then now it's 0, which invalidates the m_id in
+ * the m_ids array without replacing it).
+ *
+ * This will close fds for the metas that were a part of this experiment, so if
+ * you were in the middle of checking fds, you will want to go back to the
+ * start of the main loop and let select() tell you again what fds are reading.
+ */
 int
 measurement_failed(
         unsigned m_id,
