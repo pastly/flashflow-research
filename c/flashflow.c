@@ -425,7 +425,15 @@ int main(int argc, const char *argv[]) {
                 }
                 if (!tc_connected_socket(meta)) {
                     LOG("Unable to to tell fd=%d to connect to target\n", connecting_fds[i]);
-                    return -1;
+                    // jump to the end of the main loop. Yes, select() will have
+                    // to tell us again about and fds we didn't get around to
+                    // handling this time (in connecting_fds, setting_bw_fds, or
+                    // any other array). But we just marked a bunch of metas as
+                    // finished, which inclides closing fds, which means those
+                    // arrays of fds may have stale fds in them.
+                    num_known_m_ids = measurement_failed(
+                        meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_connected_target);
             }
