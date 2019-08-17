@@ -474,7 +474,19 @@ int main(int argc, const char *argv[]) {
                 }
                 struct msm_params p;
                 assert(fill_msm_params(&p, meta->current_m_id));
-                assert(tc_output_result(meta, p.id, p.fp));
+                if (!tc_output_result(meta, p.id, p.fp)) {
+                    LOG("Error while outputting some results of measurement id=%u\n", meta->current_m_id);
+                    num_known_m_ids = measurement_failed(
+                        meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    count_failure++;
+                    // jump to the end of the main loop. Yes, select() will have
+                    // to tell us again about and fds we didn't get around to
+                    // handling this time (in connecting_fds, setting_bw_fds, or
+                    // any other array). But we just marked a bunch of metas as
+                    // finished, which inclides closing fds, which means those
+                    // arrays of fds may have stale fds in them.
+                    goto main_loop_end;
+                }
             }
         }
         //LOG("Would do stuff now\n");
