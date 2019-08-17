@@ -416,11 +416,11 @@ int main(int argc, const char *argv[]) {
         for (int i = 0; i < num_connecting_fds; i++) {
             if (FD_ISSET(connecting_fds[i], &read_set)) {
                 if (!(meta = meta_with_fd(connecting_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    LOG("Could not find fd=%d in metas\n", connecting_fds[i]);
                     return -1;
                 }
                 if (!tc_connected_socket(meta)) {
-                    LOG("Unable to to tell fd=%d to connect to target\n", authing_fds[i]);
+                    LOG("Unable to to tell fd=%d to connect to target\n", connecting_fds[i]);
                     return -1;
                 }
                 tc_assert_state(meta, csm_st_connected_target);
@@ -430,7 +430,7 @@ int main(int argc, const char *argv[]) {
         for (int i = 0; i < num_setting_bw_fds; i++) {
             if (FD_ISSET(setting_bw_fds[i], &read_set)) {
                 if (!(meta = meta_with_fd(setting_bw_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    LOG("Could not find fd=%d in metas\n", setting_bw_fds[i]);
                     return -1;
                 }
                 if (!tc_did_set_bw_rate(meta)) {
@@ -452,7 +452,7 @@ int main(int argc, const char *argv[]) {
         for (int i = 0; i < num_measuring_fds; i++) {
             if (FD_ISSET(measuring_fds[i], &read_set)) {
                 if (!(meta = meta_with_fd(measuring_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
+                    LOG("Could not find fd=%d in metas\n", measuring_fds[i]);
                     return -1;
                 }
                 struct msm_params p;
