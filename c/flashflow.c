@@ -80,7 +80,9 @@ send_auth_metas(unsigned m_id, struct ctrl_sock_meta metas[], const int num_meta
         if (metas[i].current_m_id != m_id)
             continue;
         tc_assert_state(&metas[i], csm_st_connected);
-        tc_auth_socket(&metas[i]);
+        if (!tc_auth_socket(&metas[i])) {
+            return 0;
+        }
     }
     return 1;
 }
@@ -264,8 +266,10 @@ int main(int argc, const char *argv[]) {
                 sched_mark_done(new_m_id);
                 continue;
             }
-            assert(send_auth_metas(new_m_id, metas, num_tor_clients));
             known_m_ids[num_known_m_ids++] = new_m_id;
+            if (!send_auth_metas(new_m_id, metas, num_tor_clients)) {
+                measurement_failed(new_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+            }
         }
         // for each known measurement, do things for them if any of them need
         // things done. (wow such shitty comment)
