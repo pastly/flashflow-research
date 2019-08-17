@@ -217,7 +217,11 @@ int main(int argc, const char *argv[]) {
             // We are allowed to start a new measurement. Get the ball rolling
             // on that by finding and connecting to the needed tor clients.
             LOG("Starting new measurement id=%u\n", new_m_id);
-            assert(find_and_connect_metas(new_m_id, metas, num_tor_clients));
+            if (!find_and_connect_metas(new_m_id, metas, num_tor_clients)) {
+                LOG("Cannot start measurement id=%u. Skipping.\n", new_m_id);
+                sched_mark_done(new_m_id);
+                continue;
+            }
             assert(send_auth_metas(new_m_id, metas, num_tor_clients));
             known_m_ids[num_known_m_ids++] = new_m_id;
         }
