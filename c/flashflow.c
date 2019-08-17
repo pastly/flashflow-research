@@ -489,7 +489,6 @@ int main(int argc, const char *argv[]) {
                 }
             }
         }
-        //LOG("Would do stuff now\n");
 main_loop_end:
         (int)1;
     }
