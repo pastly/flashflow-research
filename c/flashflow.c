@@ -216,6 +216,7 @@ measurement_failed(
 }
 
 int main(int argc, const char *argv[]) {
+    int count_success = 0, count_failure = 0, count_total = 0;
     struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
     unsigned known_m_ids[MAX_NUM_CTRL_SOCKS];
     int num_known_m_ids = 0;
@@ -243,7 +244,7 @@ int main(int argc, const char *argv[]) {
         LOG("%s at %s:%s\n", metas[i].class, metas[i].host, metas[i].port);
     }
     LOG("Reading experiments from %s\n", fp_fname);
-    if (!sched_new(fp_fname)) {
+    if (!(count_total = sched_new(fp_fname))) {
         LOG("Empty sched from %s or error\n", fp_fname);
         return -1;
     }
@@ -269,6 +270,7 @@ int main(int argc, const char *argv[]) {
             known_m_ids[num_known_m_ids++] = new_m_id;
             if (!send_auth_metas(new_m_id, metas, num_tor_clients)) {
                 measurement_failed(new_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                count_failure++;
             }
         }
         // for each known measurement, do things for them if any of them need
@@ -334,6 +336,7 @@ int main(int argc, const char *argv[]) {
                 }
                 sched_mark_done(known_m_ids[i]);
                 known_m_ids[i--] = known_m_ids[--num_known_m_ids];
+                count_success++;
             }
             free_msm_params(&p);
         }
@@ -425,14 +428,15 @@ int main(int argc, const char *argv[]) {
                 }
                 if (!tc_connected_socket(meta)) {
                     LOG("Unable to to tell fd=%d to connect to target\n", connecting_fds[i]);
+                    num_known_m_ids = measurement_failed(
+                        meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    count_failure++;
                     // jump to the end of the main loop. Yes, select() will have
                     // to tell us again about and fds we didn't get around to
                     // handling this time (in connecting_fds, setting_bw_fds, or
                     // any other array). But we just marked a bunch of metas as
                     // finished, which inclides closing fds, which means those
                     // arrays of fds may have stale fds in them.
-                    num_known_m_ids = measurement_failed(
-                        meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_connected_target);
@@ -449,6 +453,7 @@ int main(int argc, const char *argv[]) {
                     LOG("Unable to tell fd=%d to set its bw\n", setting_bw_fds[i]);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    count_failure++;
                     // jump to the end of the main loop. Yes, select() will have
                     // to tell us again about and fds we didn't get around to
                     // handling this time (in connecting_fds, setting_bw_fds, or
@@ -477,5 +482,6 @@ main_loop_end:
         (int)1;
     }
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
+    LOG("%d success, %d failed, %d total\n", count_success, count_failure, count_total);
     return 0;
 }
