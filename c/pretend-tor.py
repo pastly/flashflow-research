@@ -45,6 +45,12 @@ def get_connect_target(lines):
     return True
 
 
+def get_set_bw(lines):
+    line = next(lines)
+    print(line)
+    return True
+
+
 def get_start_measurement(lines):
     line = next(lines)
     words = line.split()
@@ -70,6 +76,10 @@ def output_iter(lines):
         return
     print('did connect cmd')
     yield '250 SPEEDTESTING\n'
+    if not get_set_bw(lines):
+        print('failed to get set bw command')
+        return
+    yield '250 OK\n'
     dur = get_start_measurement(lines)
     if not dur:
         print('failed to get measurement start')
