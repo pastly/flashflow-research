@@ -1,7 +1,12 @@
 #include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #include <assert.h>
 
 #include "common.h"
+
+#define DESC_META_BUF_SIZE 512
+char desc_meta_buf[DESC_META_BUF_SIZE];
 
 inline const char *
 csm_st_str(const enum csm_state s) {
@@ -20,6 +25,19 @@ csm_st_str(const enum csm_state s) {
         default: assert(0); break;
     }
 }
+
+char *
+desc_meta(const struct ctrl_sock_meta *m) {
+    if (!m) {
+        return strcpy(desc_meta_buf, "(NULL)");
+    }
+    const char *fmt="{%s %s:%s fd=%d m_id=%u}";
+    snprintf(
+        desc_meta_buf, DESC_META_BUF_SIZE, fmt,
+        m->class, m->host, m->port, m->fd, m->current_m_id);
+    return desc_meta_buf;
+}
+
 
 void
 free_ctrl_sock_meta(struct ctrl_sock_meta m) {

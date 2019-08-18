@@ -13,8 +13,9 @@
 /**
  * Change the state of the given meta, and assert on invalid state changes.
  */
+#define tc_change_state(m, st) tc_change_state_((m), (st), __func__, __FILE__, __LINE__)
 void
-tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
+tc_change_state_(struct ctrl_sock_meta *meta, enum csm_state new_state, const char *func, const char *file, const int line) {
     enum csm_state old_state = meta->state;
     switch (old_state) {
         case csm_st_invalid:
@@ -110,16 +111,16 @@ tc_change_state(struct ctrl_sock_meta *meta, enum csm_state new_state) {
                     goto tc_bad_state_change; break;
             }
         default:
-            LOG("Invalid old_state=%s\n", csm_st_str(old_state));
+            LOG("Invalid old_state=%s at %s@%s:%d\n", csm_st_str(old_state), func, file, line);
             assert(0);
             break;
     }
 tc_good_state_change:
-    LOG("Changing from %s to %s on fd=%d\n", csm_st_str(old_state), csm_st_str(new_state), meta->fd);
+    LOG("Changing from %s to %s on %s at %s@%s:%d\n", csm_st_str(old_state), csm_st_str(new_state), desc_meta(meta), func, file, line);
     meta->state = new_state;
     return;
 tc_bad_state_change:
-    LOG("Invalid new_state=%s when old_state=%s on fd=%d\n", csm_st_str(new_state), csm_st_str(old_state), meta->fd);
+    LOG("Invalid new_state=%s when old_state=%s on %s at %s@%s:%d\n", csm_st_str(new_state), csm_st_str(old_state), desc_meta(meta), func, file, line);
     assert(0);
     return;
 }
@@ -280,7 +281,7 @@ tc_authed_socket(struct ctrl_sock_meta *meta) {
  */
 int
 tc_tell_connect(struct ctrl_sock_meta *meta, const char *fp, const unsigned conns) {
-    LOG("Telling %s (%s:%s) to connect to %s with %u conns\n", meta->class, meta->host, meta->port, fp, conns);
+    LOG("Telling %s to connect to %s with %u conns\n", desc_meta(meta), fp, conns);
     tc_assert_state(meta, csm_st_authed);
     const int buf_size = 1024;
     char msg[buf_size];
@@ -322,7 +323,7 @@ tc_connected_socket(struct ctrl_sock_meta *meta) {
 
 int
 tc_set_bw_rate(struct ctrl_sock_meta *meta, const unsigned bw) {
-    LOG("Telling %s (%s:%s) to set its rate/burst to %u\n", meta->class, meta->host, meta->port, bw);
+    LOG("Telling %s to set its rate/burst to %u\n", desc_meta(meta), bw);
     tc_assert_state(meta, csm_st_connected_target);
     const int buf_size = 1024;
     char msg[buf_size];
@@ -361,7 +362,7 @@ tc_did_set_bw_rate(struct ctrl_sock_meta *meta) {
 
 int
 tc_start_measurement(struct ctrl_sock_meta *meta, const unsigned dur) {
-    LOG("Telling %s (%s:%s) to measure for %u secs\n", meta->class, meta->host, meta->port, dur);
+    LOG("Telling %s to measure for %u secs\n", desc_meta(meta), dur);
     const int buf_size = 80;
     char msg[buf_size];
     if (snprintf(msg, buf_size, "TESTSPEED %d\n", dur) < 0) {
@@ -390,7 +391,7 @@ tc_output_result(struct ctrl_sock_meta *meta, unsigned m_id, const char *fp) {
         return 0;
     }
     if (!len) {
-        LOG("Read empty result response. Assuming fd=%d is done\n", meta->fd);
+        LOG("Read empty result response. Assuming %s is done\n", desc_meta(meta));
         tc_change_state(meta, csm_st_done);
         return 1;
     }
@@ -430,20 +431,12 @@ int
 tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char *class) {
     for (int i = 0; i < num_metas; i++) {
         if (!strcmp(metas[i].class, class) && !metas[i].current_m_id) {
-            LOG("Trying to make socket to %s:%s\n", metas[i].host, metas[i].port);
+            LOG("Trying to make socket for %s\n", desc_meta(&metas[i]));
             if (tc_make_socket(&metas[i]) < 0) {
                 //LOG("Unable to open socket to %s:%s\n", metas[i].host, metas[i].port);
                 continue;
             }
-            LOG("Connected to %s (%s:%s) on fd=%d\n", metas[i].class, metas[i].host, metas[i].port, metas[i].fd);
-            //if (!tc_auth_socket(metas[i].fd, metas[i].pw)) {
-            //    //LOG("Could not auth on fd=%d\n", metas[i].fd);
-            //    close(metas[i].fd);
-            //    metas[i].fd = -1;
-            //    continue;
-            //}
-            //tc_change_state(&metas[i], csm_st_authed);
-            //LOG("Authed to %s (%s:%s) on fd=%d\n", metas[i].class, metas[i].host, metas[i].port, metas[i].fd);
+            LOG("Connected to %s\n", desc_meta(&metas[i]));
             return i;
         }
     }
@@ -457,10 +450,10 @@ tc_mark_failed(struct ctrl_sock_meta *meta) {
 
 int
 tc_finished_with_meta(struct ctrl_sock_meta *meta) {
-    LOG("Finished with %s (%s:%s)\n", meta->class, meta->host, meta->port);
+    LOG("Finished with %s\n", desc_meta(meta));
     tc_change_state(meta, csm_st_invalid);
     if (meta->fd >= 0) {
-        LOG("closing fd=%d\n", meta->fd);
+        LOG("closing fd for %s\n", desc_meta(meta));
         // https://stackoverflow.com/questions/4160347/close-vs-shutdown-socket
         //shutdown(meta->fd, SHUT_RDWR);
         close(meta->fd);
@@ -487,7 +480,7 @@ tc_finished_with_meta(struct ctrl_sock_meta *meta) {
     //    meta->pw = NULL;
     //}
     if (meta->current_m_id) {
-        LOG("clearing current_m_id=%u\n", meta->current_m_id);
+        LOG("clearing current_m_id=%u for %s\n", meta->current_m_id, desc_meta(meta));
         meta->current_m_id = 0;
     }
     return 1;
@@ -496,9 +489,9 @@ tc_finished_with_meta(struct ctrl_sock_meta *meta) {
 void
 tc_assert_state_(const struct ctrl_sock_meta *meta, const enum csm_state state, const char *func, const char *file, const int line) {
     if (meta->state != state) {
-        LOG("Assert in %s@%s:%d! %s (%s:%s) fd=%d in state %s but expected to be in %s\n",
+        LOG("Assert in %s@%s:%d! %s in state %s but expected to be in %s\n",
             func, file, line,
-            meta->class, meta->host, meta->port, meta->fd,
+            desc_meta(meta),
             csm_st_str(meta->state), csm_st_str(state));
             assert(meta->state == state);
     }

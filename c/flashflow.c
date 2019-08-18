@@ -300,7 +300,7 @@ int main(int argc, const char *argv[]) {
                         for (int k = 0; k < p.num_m; k++) {
                             if (!strcmp(p.m[k], metas[j].class) && !p.m_assigned[k]) {
                                 if (!tc_tell_connect(&metas[j], p.fp, p.m_nconn[k])) {
-                                    LOG("Unable to to tell fd=%d to connect to target\n", metas[j].fd);
+                                    LOG("Unable to to tell %s to connect to target\n", desc_meta(&metas[j]));
                                     num_known_m_ids = measurement_failed(
                                         known_m_ids[i], known_m_ids, num_known_m_ids,
                                         metas, num_tor_clients);
@@ -328,7 +328,7 @@ int main(int argc, const char *argv[]) {
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
                         if (!tc_set_bw_rate(&metas[j], p.m_bw[next_bw++])) {
-                            LOG("Unable to tell fd=%d to set its bw rate\n", metas[j].fd);
+                            LOG("Unable to tell %s to set its bw rate\n", desc_meta(&metas[j]));
                             num_known_m_ids = measurement_failed(
                                 known_m_ids[i], known_m_ids, num_known_m_ids,
                                 metas, num_tor_clients);
@@ -350,7 +350,7 @@ int main(int argc, const char *argv[]) {
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
                         if (!tc_start_measurement(&metas[j], p.dur)) {
-                            LOG("Unable to tell fd=%d to start measuring\n", metas[j].fd);
+                            LOG("Unable to tell %s to start measuring\n", desc_meta(&metas[j]));
                             num_known_m_ids = measurement_failed(
                                 known_m_ids[i], known_m_ids, num_known_m_ids,
                                 metas, num_tor_clients);
@@ -391,25 +391,25 @@ int main(int argc, const char *argv[]) {
             if (metas[i].state == csm_st_authing) {
                 // Build up the list of tor client fds that we are currently waiting
                 // on auth success message from
-                LOG("Adding fd=%d to list of fds needed auth response\n", metas[i].fd);
+                LOG("Adding %s to list of fds needed auth response\n", desc_meta(&metas[i]));
                 authing_fds[num_authing_fds++] = metas[i].fd;
                 FD_SET(metas[i].fd, &read_set);
             } else if (metas[i].state == csm_st_told_connect_target) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // a connect-to-target success message from
-                LOG("Adding fd=%d to list of fds needed connect-to-target response\n", metas[i].fd);
+                LOG("Adding %s to list of fds needed connect-to-target response\n", desc_meta(&metas[i]));
                 connecting_fds[num_connecting_fds++] = metas[i].fd;
                 FD_SET(metas[i].fd, &read_set);
             } else if (metas[i].state == csm_st_setting_bw) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // for a success msg about setting bw
-                LOG("Adding fd=%d to list of fds needed did-set-bw response\n", metas[i].fd);
+                LOG("Adding %s to list of fds needed did-set-bw response\n", desc_meta(&metas[i]));
                 setting_bw_fds[num_setting_bw_fds++] = metas[i].fd;
                 FD_SET(metas[i].fd, &read_set);
             } else if (metas[i].state == csm_st_measuring) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // for a per-second measurement result from
-                LOG("Adding fd=%d to list of ongoing measurement fds\n", metas[i].fd);
+                LOG("Adding %s to list of ongoing measurement fds\n", desc_meta(&metas[i]));
                 measuring_fds[num_measuring_fds++] = metas[i].fd;
                 FD_SET(metas[i].fd, &read_set);
             }
@@ -540,7 +540,7 @@ int main(int argc, const char *argv[]) {
             }
         }
 main_loop_end:
-        (int)1;
+        (int)1; // purposeful no-op
     }
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     LOG("%d success, %d failed, %d total\n", count_success, count_failure, count_total);

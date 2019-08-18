@@ -56,5 +56,6 @@ struct msm_params {
 
 const char *csm_st_str(const enum csm_state s);
 void free_ctrl_sock_meta(struct ctrl_sock_meta m);
+char *desc_meta(const struct ctrl_sock_meta *m);
 
 #endif /* !defined(FF_COMMON_H) */
