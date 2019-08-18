@@ -14,5 +14,6 @@ int tc_output_result(struct ctrl_sock_meta *meta, const unsigned m_id, const cha
 int tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char *class);
 int tc_finished_with_meta(struct ctrl_sock_meta *meta);
 void tc_mark_failed(struct ctrl_sock_meta *meta);
-void tc_assert_state(const struct ctrl_sock_meta *meta, const enum csm_state state);
+void tc_assert_state_(const struct ctrl_sock_meta *meta, const enum csm_state state, const char *func, const char *file, const int line);
+#define tc_assert_state(m, s) tc_assert_state_((m), (s), __func__, __FILE__, __LINE__)
 #endif /* !defined(FF_CLIENTFILE_H) */

@@ -461,6 +461,8 @@ tc_finished_with_meta(struct ctrl_sock_meta *meta) {
     tc_change_state(meta, csm_st_invalid);
     if (meta->fd >= 0) {
         LOG("closing fd=%d\n", meta->fd);
+        // https://stackoverflow.com/questions/4160347/close-vs-shutdown-socket
+        //shutdown(meta->fd, SHUT_RDWR);
         close(meta->fd);
         meta->fd = -1;
     }
@@ -492,9 +494,10 @@ tc_finished_with_meta(struct ctrl_sock_meta *meta) {
 }
 
 void
-tc_assert_state(const struct ctrl_sock_meta *meta, const enum csm_state state) {
+tc_assert_state_(const struct ctrl_sock_meta *meta, const enum csm_state state, const char *func, const char *file, const int line) {
     if (meta->state != state) {
-        LOG("Assert! %s (%s:%s) fd=%d in state %s but expected to be in %s\n",
+        LOG("Assert in %s@%s:%d! %s (%s:%s) fd=%d in state %s but expected to be in %s\n",
+            func, file, line,
             meta->class, meta->host, meta->port, meta->fd,
             csm_st_str(meta->state), csm_st_str(state));
             assert(meta->state == state);

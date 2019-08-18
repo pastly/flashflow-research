@@ -10,6 +10,9 @@
 #include "sched.h"
 
 #define MAX_LOOPS_WITHOUT_PROGRESS 10
+#define SELECT_TIMEOUT 3
+#define measurement_failed(m_id, m_ids, num_m, metas, num_metas) \
+    measurement_failed_((m_id), (m_ids), (num_m), (metas), (num_m), __func__, __FILE__, __LINE__)
 
 void
 usage() {
@@ -185,17 +188,21 @@ is_totally_done(unsigned m_id, const struct ctrl_sock_meta metas[], const int nu
  * start of the main loop and let select() tell you again what fds are reading.
  */
 int
-measurement_failed(
+measurement_failed_(
         unsigned m_id,
         unsigned m_ids[], int num_m,
-        struct ctrl_sock_meta metas[], const int num_metas) {
-    LOG("FAILED measurement id=%u. Cleaning up.\n", m_id);
-    sched_mark_done(m_id);
-    if (num_m <= 0) {
-        LOG("WARN: called measurement_failed() with %d measurements. "
-            "Expected at least 1.\n", num_m);
-        return num_m;
+        struct ctrl_sock_meta metas[], const int num_metas,
+        const char *func, const char *file, const int line) {
+    LOG("FAILED measurement id=%u at %s@%s:%d. Cleaning up.\n", m_id, func, file, line);
+    // cleanup all tor client metas that were a part of thie measurement
+    for (int i = 0; i < num_metas; i++) {
+        if (metas[i].current_m_id == m_id) {
+            tc_mark_failed(&metas[i]);
+            tc_finished_with_meta(&metas[i]);
+        }
     }
+    sched_mark_done(m_id);
+    assert(num_m >= 0);
     // replace the given measurement id with whatever is the last one in the
     // list of all measurement ids
     for (int i = 0; i < num_m; i++) {
@@ -203,13 +210,6 @@ measurement_failed(
             LOG("Replacing m_id=%u (idx=%d) with m_id=%u (idx=%d)\n", m_ids[i], i, m_ids[num_m-1], num_m-1);
             m_ids[i] = m_ids[--num_m];
             break;
-        }
-    }
-    // cleanup all tor client metas that were a part of thie measurement
-    for (int i = 0; i < num_metas; i++) {
-        if (metas[i].current_m_id == m_id) {
-            tc_mark_failed(&metas[i]);
-            tc_finished_with_meta(&metas[i]);
         }
     }
     return num_m;
@@ -254,8 +254,15 @@ int main(int argc, const char *argv[]) {
             // TODO: The right thing to do is to fail on the current
             // measurements and start new ones. Not recovering gracefully is a
             // big problem in this currently.
-            LOG("Went %u main loops without any forward progress. Giving up on life.\n", loops_without_progress);
-            return -1;
+            LOG("Went %u main loops without any forward progress. Failing all "
+                "existing measurements.\n", loops_without_progress);
+            while (num_known_m_ids) {
+                num_known_m_ids = measurement_failed(
+                    known_m_ids[num_known_m_ids-1], known_m_ids, num_known_m_ids,
+                    metas, num_tor_clients);
+                count_failure++;
+            }
+            loops_without_progress = 0;
         }
         unsigned new_m_id;
         while ((new_m_id = sched_next())) {
@@ -264,7 +271,10 @@ int main(int argc, const char *argv[]) {
             LOG("Starting new measurement id=%u\n", new_m_id);
             if (!find_and_connect_metas(new_m_id, metas, num_tor_clients)) {
                 LOG("Cannot start measurement id=%u. Skipping.\n", new_m_id);
-                sched_mark_done(new_m_id);
+                num_known_m_ids = measurement_failed(
+                    new_m_id, known_m_ids, num_known_m_ids,
+                    metas, num_tor_clients);
+                count_failure++;
                 continue;
             }
             known_m_ids[num_known_m_ids++] = new_m_id;
@@ -415,7 +425,7 @@ int main(int argc, const char *argv[]) {
         }
         LOG("Going in to select() with %d interesting fds\n", num_interesting_fds);
         // how long we are willing to wait on select()
-        struct timeval select_timeout = { .tv_sec = 3, .tv_usec = 0 };
+        struct timeval select_timeout = { .tv_sec = SELECT_TIMEOUT, .tv_usec = 0 };
         struct timeval select_timeout_remaining = select_timeout;
         // for select()
         int max_fd = max_or(
@@ -445,7 +455,16 @@ int main(int argc, const char *argv[]) {
                 }
                 if (!tc_authed_socket(meta)) {
                     LOG("Unable to auth to fd=%d\n", authing_fds[i]);
-                    return -1;
+                    num_known_m_ids = measurement_failed(
+                        meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    count_failure++;
+                    // jump to the end of the main loop. Yes, select() will have
+                    // to tell us again about and fds we didn't get around to
+                    // handling this time (in connecting_fds, setting_bw_fds, or
+                    // any other array). But we just marked a bunch of metas as
+                    // finished, which inclides closing fds, which means those
+                    // arrays of fds may have stale fds in them.
+                    goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_authed);
             }
