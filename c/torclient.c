@@ -98,6 +98,7 @@ tc_change_state_(struct ctrl_sock_meta *meta, enum csm_state new_state, const ch
             break;
         case csm_st_done:
             switch (new_state) {
+                case csm_st_failed:
                 case csm_st_invalid:
                     goto tc_good_state_change; break;
                 default:
