@@ -12,7 +12,7 @@
 #define MAX_LOOPS_WITHOUT_PROGRESS 10
 #define SELECT_TIMEOUT 3
 #define measurement_failed(m_id, m_ids, num_m, metas, num_metas) \
-    measurement_failed_((m_id), (m_ids), (num_m), (metas), (num_m), __func__, __FILE__, __LINE__)
+    measurement_failed_((m_id), (m_ids), (num_m), (metas), (num_metas), __func__, __FILE__, __LINE__)
 
 void
 usage() {
