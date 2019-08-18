@@ -13,10 +13,12 @@ use std::io::{BufRead, BufReader};
 use std::iter::FromIterator;
 use std::mem;
 use std::sync::Mutex;
+use std::time::SystemTime;
 
 lazy_static! {
     static ref MSMS: Mutex<HashMap<u32, Measurement>> = Mutex::new(HashMap::new());
 }
+const FAILSAFE_STOP_DUR: u64 = 60;
 
 //#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
@@ -28,6 +30,7 @@ pub struct Measurement {
     hosts: Vec<Host>,
     depends: Vec<u32>,
     finished_depends: Vec<u32>,
+    failsafe_stop: u64,
 }
 
 #[no_mangle]
@@ -40,6 +43,11 @@ pub extern "C" fn sched_get_fp(m_id: u32) -> *const c_char {
 #[no_mangle]
 pub extern "C" fn sched_get_dur(m_id: u32) -> u32 {
     MSMS.lock().unwrap().get(&m_id).unwrap().dur
+}
+
+#[no_mangle]
+pub extern "C" fn sched_get_failsafe_stop(m_id: u32) -> u64 {
+    MSMS.lock().unwrap().get(&m_id).unwrap().failsafe_stop
 }
 
 //#[repr(C)]
@@ -130,6 +138,7 @@ impl Measurement {
             hosts,
             depends,
             finished_depends: vec![],
+            failsafe_stop: 0,
         })
     }
 }
@@ -301,6 +310,7 @@ fn sched_next_internal(mark: bool) -> u32 {
         if m.state == State::Waiting && m.depends.len() == m.finished_depends.len() {
             if mark {
                 m.state = State::InProgress;
+                m.failsafe_stop = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() + FAILSAFE_STOP_DUR;
             }
             return m.id;
         }

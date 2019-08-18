@@ -52,6 +52,7 @@ struct msm_params {
     unsigned *m_bw;
     unsigned *m_nconn;
     int8_t *m_assigned;
+    uint64_t failsafe_stop;
 };
 
 const char *csm_st_str(const enum csm_state s);

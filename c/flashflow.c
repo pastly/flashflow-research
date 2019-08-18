@@ -30,6 +30,7 @@ fill_msm_params(struct msm_params *p, const unsigned m_id) {
     p->id = m_id;
     p->fp = sched_get_fp(p->id);
     p->dur = sched_get_dur(p->id);
+    p->failsafe_stop = sched_get_failsafe_stop(p->id);
     p->num_m = sched_get_hosts(p->id, &p->m, &p->m_bw, &p->m_nconn);
     p->m_assigned = calloc(p->num_m, sizeof(int8_t));
     if (!p->fp) {
@@ -260,6 +261,19 @@ int main(int argc, const char *argv[]) {
                 count_failure++;
             }
             loops_without_progress = 0;
+        }
+        for (int i = 0; i < num_known_m_ids; i++) {
+            struct msm_params p;
+            struct timeval now;
+            assert(fill_msm_params(&p, known_m_ids[i]));
+            assert(gettimeofday(&now, NULL) == 0);
+            if (now.tv_sec > p.failsafe_stop) {
+                LOG("Measurement id=%u has gone on for too long. Failing safe and stopping it.\n", known_m_ids[i]);
+                num_known_m_ids = measurement_failed(known_m_ids[i], known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                i--;
+                count_failure++;
+            }
+            free_msm_params(&p);
         }
         unsigned new_m_id;
         while ((new_m_id = sched_next())) {
