@@ -251,9 +251,6 @@ int main(int argc, const char *argv[]) {
     // Main loop
     while (!sched_finished()) {
         if (loops_without_progress > MAX_LOOPS_WITHOUT_PROGRESS) {
-            // TODO: The right thing to do is to fail on the current
-            // measurements and start new ones. Not recovering gracefully is a
-            // big problem in this currently.
             LOG("Went %u main loops without any forward progress. Failing all "
                 "existing measurements.\n", loops_without_progress);
             while (num_known_m_ids) {
@@ -540,7 +537,7 @@ int main(int argc, const char *argv[]) {
             }
         }
 main_loop_end:
-        (int)1; // purposeful no-op
+        (void)0; // purposeful no-op
     }
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     LOG("%d success, %d failed, %d total\n", count_success, count_failure, count_total);
