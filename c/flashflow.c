@@ -251,6 +251,8 @@ int main(int argc, const char *argv[]) {
     }
     // Main loop
     while (!sched_finished()) {
+        // Check if we've looped too many times without doing anything, and fail
+        // all existing measurements if so
         if (loops_without_progress > MAX_LOOPS_WITHOUT_PROGRESS) {
             LOG("Went %u main loops without any forward progress. Failing all "
                 "existing measurements.\n", loops_without_progress);
@@ -262,6 +264,7 @@ int main(int argc, const char *argv[]) {
             }
             loops_without_progress = 0;
         }
+        // Check if any measurements have gone on for too long and fail them
         for (int i = 0; i < num_known_m_ids; i++) {
             struct msm_params p;
             struct timeval now;
