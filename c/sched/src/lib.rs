@@ -272,6 +272,7 @@ fn sched_new_from_json(fname: &str) {
         .map(|m| m.unwrap())
         .collect();
     check_and_insert_measurements(measurements);
+    panic!("Running from JSON fps is not supported. Use the plain text output above instead use that as input instead.");
 }
 
 #[no_mangle]
