@@ -11,11 +11,11 @@ def data_iter(fd):
     for line in fd:
         line = line.strip()
         words = line.split()
-        if len(words) != 8:
+        if len(words) != 9:
             log('Ignoring short/long line: "%s"' % line)
             continue
         try:
-            t = float(words[0])
+            t = float(words[6])
         except Exception:
             log('Bad timestsamp:', words[0])
             continue
@@ -29,14 +29,14 @@ def data_iter(fd):
             log('words[5] should be SPEEDTESTING')
             continue
         try:
-            bw_down = int(words[6])
-        except Exception:
-            log('Bad bw:', words[6])
-            continue
-        try:
-            bw_up = int(words[7])
+            bw_down = int(words[7])
         except Exception:
             log('Bad bw:', words[7])
+            continue
+        try:
+            bw_up = int(words[8])
+        except Exception:
+            log('Bad bw:', words[8])
             continue
         yield t, hostport, bw_down, bw_up
 
