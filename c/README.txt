@@ -7,8 +7,21 @@ Step 1: install needed Rust program
 
 cargo install cbindgen
 
-If unable to communicate with the Internet well enough to get it, talk
-to Matt
+If unable to communicate with the Internet well enough to get it, perform this
+step on koios2 instead (as it has more complete access to the Internet than the
+rest of the lab machines as of 19 Aug 2019). It'll be installed in
+~/.cargo/bin, which is shared on all our lab machines, so it'll be available on
+all machines.
+
+Step 1.1: add ~/.cargo/bin to your PATH
+---------
+
+Add something like the following to your ~/.bash_profile.
+
+export PATH="$HOME/.cargo/bin:$PATH"
+
+Remember it won't apply to existing shells, so either source ~/.bash_profile or
+close/reopen all necessary shells.
 
 Step 2: get flashflow code, compile
 -------
@@ -19,9 +32,15 @@ mtraudt/purple-hurtz-code.git from rhea. For example,
 git clone git@rhea:mtraudt/purple-hurtz-code.git
 
 Once you have the code, go to the "c" subdirectory and run make.
+
 Compiling the Rust library will require downloading some crates on the
 first compile. If unable to communicate with the Internet well enough to
-do so, talk to Matt.
+do so, perform this step on koios2 first (as it can download the necessary
+libraries and will cache them in ~/.cargo, which is available on all machines)
+and then start this step over on the actually desired machine. You will know
+that you're unable to talk to the Internet very well by either the cbindgen
+step taking more than 1 minute or by the "cargo build" step making no progress
+on downloading.
 
 A successful compile should leave you with a flashflow executable and
 libflashflow.so. Running flashflow should output brief usage information.
