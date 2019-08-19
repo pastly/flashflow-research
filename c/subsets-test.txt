@@ -1,7 +1,15 @@
-# To get a mult of 2.25 with 20% allowed error below and 5% error above ...
-# 2.25 * (1+.05)/(1-.2)
-# Thus 250 * 2.25 * (1.05/0.8) = 738.3
-he-amst.do-10-250Mbps-738Mbps-defdefdefmax
-he-amst.do-25-250Mbps-738Mbps-defdefdefmax
-he-amst.do-33-250Mbps-738Mbps-defdefdefmax
-he-amst.do-50-250Mbps-738Mbps-defdefdefmax
+he-nrl,ddns,india.do,amst.do-2s-50-10Mbps-5.6Mbps,5.6Mbps,5.6Mbps,5.6Mbps-defdefdefmax
+he-nrl,ddns,india.do-2s-50-10Mbps-7.5Mbps,7.5Mbps,7.5Mbps-defdefdefmax
+he-nrl,ddns,amst.do-2s-50-10Mbps-7.5Mbps,7.5Mbps,7.5Mbps-defdefdefmax
+he-nrl,india.do,amst.do-2s-50-10Mbps-7.5Mbps,7.5Mbps,7.5Mbps-defdefdefmax
+he-ddns,india.do,amst.do-2s-50-10Mbps-7.5Mbps,7.5Mbps,7.5Mbps-defdefdefmax
+he-nrl,ddns-2s-50-10Mbps-11.2Mbps,11.2Mbps-defdefdefmax
+he-nrl,india.do-2s-50-10Mbps-11.2Mbps,11.2Mbps-defdefdefmax
+he-nrl,amst.do-2s-50-10Mbps-11.2Mbps,11.2Mbps-defdefdefmax
+he-ddns,india.do-2s-50-10Mbps-11.2Mbps,11.2Mbps-defdefdefmax
+he-ddns,amst.do-2s-50-10Mbps-11.2Mbps,11.2Mbps-defdefdefmax
+he-india.do,amst.do-2s-50-10Mbps-11.2Mbps,11.2Mbps-defdefdefmax
+he-nrl-2s-50-10Mbps-22.5Mbps-defdefdefmax
+he-ddns-2s-50-10Mbps-22.5Mbps-defdefdefmax
+he-india.do-2s-50-10Mbps-22.5Mbps-defdefdefmax
+he-amst.do-2s-50-10Mbps-22.5Mbps-defdefdefmax
