@@ -18,8 +18,6 @@ use std::time::SystemTime;
 lazy_static! {
     static ref MSMS: Mutex<HashMap<u32, Measurement>> = Mutex::new(HashMap::new());
 }
-const FAILSAFE_STOP_DUR: u64 = 60;
-
 //#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Measurement {
@@ -310,7 +308,7 @@ fn sched_next_internal(mark: bool) -> u32 {
         if m.state == State::Waiting && m.depends.len() == m.finished_depends.len() {
             if mark {
                 m.state = State::InProgress;
-                m.failsafe_stop = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() + FAILSAFE_STOP_DUR;
+                m.failsafe_stop = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() + (3 * m.dur / 2) as u64;
             }
             return m.id;
         }
