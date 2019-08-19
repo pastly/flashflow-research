@@ -20,7 +20,7 @@ usage() {
     "arguments: <fingerprint_file> <client_file>\n"
     "\n"
     "fingerprint_file    place from which to read fingerprints to measure, one per line\n"
-    "client_file         place from which to read tor client info, one per line, 'host port ctrl_port_pw'\n";
+    "client_file         place from which to read tor client info, one per line, 'class host port ctrl_port_pw'\n";
     LOG("%s", s);
 }
 
