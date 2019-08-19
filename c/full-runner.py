@@ -455,16 +455,19 @@ def _measure_phnew(args, out_dir, i, params):
         os.makedirs(out_dir, exist_ok=True)
         hosts, host_bws, host_socks, host_ips, host_ports = [], [], [], [], []
         total_num_socks = params['num_c_overall']
-        socks_per_host_iter = _split_x_by_y(total_num_socks, len(params['hosts']))
+        socks_per_host_iter = _split_x_by_y(max(len(params['hosts']), total_num_socks), len(params['hosts']))
         for host, host_tor_bw in zip(params['hosts'], params['host_tor_bws']):
             num_socks_this_host = next(socks_per_host_iter)
             num_cpu = NUM_CPU_MAP[host]
-            socks_per_cpu_iter = _split_x_by_y(num_socks_this_host, num_cpu)
-            for cpu_num in range(num_cpu):
-                bw = max(ceil(_bw_str_to_bytes(host_tor_bw)/num_cpu), 76800)
+            num_cpu_with_socks = len(['' for n in _split_x_by_y(num_socks_this_host, num_cpu) if n > 0])
+            socks_per_cpu_iter = _split_x_by_y(num_socks_this_host, num_cpu_with_socks)
+            for cpu_num in range(num_cpu_with_socks):
+                bw = max(ceil(_bw_str_to_bytes(host_tor_bw)/num_cpu_with_socks), 76800)
+                n_socks = next(socks_per_cpu_iter)
+                assert n_socks > 0
                 hosts.append(host)
                 host_bws.append(str(bw))
-                host_socks.append(str(next(socks_per_cpu_iter)))
+                host_socks.append(str(n_socks))
                 host_ips.append(IP_MAP[host])
                 host_ports.append(str(PHNEW_CTRL_PORT_MAP[host]+cpu_num))
         hosts.append('bg')
@@ -707,9 +710,10 @@ def _decompress_all(dname):
 def main(args):
     try:
         for param_idx, params in enumerate(param_sets):
-            out_dir_part = '{target}-{measurers}-{bg}-{t_bw}-{m_bw}-{mem_def}def{mem_max}max'.format(
+            out_dir_part = '{target}-{measurers}-{s}s-{bg}-{t_bw}-{m_bw}-{mem_def}def{mem_max}max'.format(
                 target=args.target_ssh_ip,
                 measurers=','.join(params['hosts']),
+                s=params['num_c_overall'],
                 bg=params['bg_pcent'],
                 t_bw=params['tor_bw'],
                 m_bw=','.join(params['host_tor_bws']),
