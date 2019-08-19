@@ -293,7 +293,7 @@ int main(int argc, const char *argv[]) {
             }
             known_m_ids[num_known_m_ids++] = new_m_id;
             if (!send_auth_metas(new_m_id, metas, num_tor_clients)) {
-                measurement_failed(new_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                num_known_m_ids = measurement_failed(new_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                 count_failure++;
             }
         }
