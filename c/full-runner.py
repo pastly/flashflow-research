@@ -203,14 +203,16 @@ def param_sets_from_file(fname):
             assert match.startswith('he-')
             assert match.endswith('-defdefdefmax')
             parts = match.split('-')
-            target, measurers, bg_pcent, target_bw_str, measurers_bw_str, mem = parts
+            target, measurers, n_socks, bg_pcent, target_bw_str, measurers_bw_str, mem = parts
             # set stuff fetched from the line
             assert target == 'he'
             out['hosts'] = measurers.split(',')
-            assert int(bg_pcent) >= 1 and int(bg_pcent) <= 99
-            out['num_c_overall'] = 160 # int(n_socks[:n_socks.index('s')])
+            # assert n_socks == '160s'
+            assert n_socks.endswith('s')
+            out['num_c_overall'] = int(n_socks[:n_socks.index('s')])
             out['tor_bw'] = target_bw_str
             out['host_tor_bws'] = measurers_bw_str.split(',')
+            assert int(bg_pcent) >= 1 and int(bg_pcent) <= 99
             out['bg_pcent'] = int(bg_pcent)
             assert mem == 'defdefdefmax'
             # set other stuff stuff
@@ -452,7 +454,7 @@ def _measure_phnew(args, out_dir, i, params):
         _start_dstat(args, params)
         os.makedirs(out_dir, exist_ok=True)
         hosts, host_bws, host_socks, host_ips, host_ports = [], [], [], [], []
-        total_num_socks = 160
+        total_num_socks = params['num_c_overall']
         socks_per_host_iter = _split_x_by_y(total_num_socks, len(params['hosts']))
         for host, host_tor_bw in zip(params['hosts'], params['host_tor_bws']):
             num_socks_this_host = next(socks_per_host_iter)
