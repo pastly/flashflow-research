@@ -14,6 +14,7 @@ sleep 2
 
 cd $D
 
+# BEGIN code for just test network measurements
 # rm -rfv flashflow-tordata-*/
 # rsync -air $TOR_HOST:$TOR_HOST_CACHE_DIR/cached-* ./
 # for A in $(seq 1 $N); do
@@ -27,6 +28,7 @@ cd $D
 #     cp -v cached-* flashflow-tordata-${BG_CLIENT_N}/
 # fi
 # rm -fv cached-*
+# END code for just test network measurements
 
 for A in $(seq 1 $N); do
     nohup ./tor-securebw-bin -f c/flashflow-torrc-$A \

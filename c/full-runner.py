@@ -766,6 +766,7 @@ if __name__ == '__main__':
         '--target-fp', type=str,
         default='859A5CE99951A3C42958AF88CE2761BD48525B16') # Tfinn3
         # default='2767A9DB46503D09FD0415BA1296B36318520F08') # TFinn1
+        # default='65622D2CEB1746755988FBC2068F04DCD34AE7A8') # relay1 in he2 testnet
 
     p.add_argument('--coord-ssh-ip', type=str, default='tityos')
     p.add_argument(
