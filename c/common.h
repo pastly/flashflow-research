@@ -2,6 +2,7 @@
 #define FF_COMMON_H
 
 #include <sys/time.h>
+#include <stdint.h>
 
 #define READ_BUF_LEN 1024*8
 #define MBITS_TO_BYTES 1000*1000/8
