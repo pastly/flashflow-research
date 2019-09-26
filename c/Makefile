@@ -5,7 +5,7 @@ PLATFORM := $(shell uname)
 CC := gcc
 
 
-CFLAGS := $(CFLAGS) -Wall -pipe -ggdb -O2 -DPIC -fPIC -std=gnu99 \
+CFLAGS := $(CFLAGS) -Wall -pipe -ggdb -O0 -DPIC -fPIC -std=gnu99 \
 	-U_FORTIFY_SOURCE -fno-inline -fno-strict-aliasing \
 	-fno-omit-frame-pointer
 # CFLAGS commented out because macOS (clang) warns that they are unused/unknown
