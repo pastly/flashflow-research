@@ -4,13 +4,15 @@
 #include <unistd.h>
 #include <limits.h>
 #include <assert.h>
+#include <sys/epoll.h>
 
 #include "common.h"
 #include "torclient.h"
 #include "sched.h"
 
 #define MAX_LOOPS_WITHOUT_PROGRESS 10
-#define SELECT_TIMEOUT 3
+#define EPOLL_TIMEOUT 3
+#define EPOLL_MAX_EVENTS MAX_NUM_CTRL_SOCKS
 #define measurement_failed(m_id, m_ids, num_m, metas, num_metas) \
     measurement_failed_((m_id), (m_ids), (num_m), (metas), (num_metas), __func__, __FILE__, __LINE__)
 
@@ -186,7 +188,7 @@ is_totally_done(unsigned m_id, const struct ctrl_sock_meta metas[], const int nu
  *
  * This will close fds for the metas that were a part of this experiment, so if
  * you were in the middle of checking fds, you will want to go back to the
- * start of the main loop and let select() tell you again what fds are reading.
+ * start of the main loop and let epoll_wait() tell you again what fds are reading.
  */
 int
 measurement_failed_(
@@ -216,11 +218,23 @@ measurement_failed_(
     return num_m;
 }
 
+int
+array_contains(int *arr, size_t arr_len, int val) {
+    for (int i = 0; i < arr_len; i++) {
+        if (arr[i] == val) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, const char *argv[]) {
     int count_success = 0, count_failure = 0, count_total = 0;
     struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
     unsigned known_m_ids[MAX_NUM_CTRL_SOCKS];
     int num_known_m_ids = 0;
+    int epoll_fd = epoll_create1(0);
+    struct epoll_event epoll_ev, epoll_tmp_ev, epoll_out_events[EPOLL_MAX_EVENTS];
     int authing_fds[MAX_NUM_CTRL_SOCKS];
     int connecting_fds[MAX_NUM_CTRL_SOCKS];
     int setting_bw_fds[MAX_NUM_CTRL_SOCKS];
@@ -395,8 +409,8 @@ int main(int argc, const char *argv[]) {
             }
             free_msm_params(&p);
         }
-        fd_set read_set;
-        FD_ZERO(&read_set);
+        memset(&epoll_ev, 0, sizeof(struct epoll_event));
+        epoll_ev.events = EPOLLIN;
         int num_authing_fds = 0;
         int num_connecting_fds = 0;
         int num_setting_bw_fds = 0;
@@ -407,25 +421,33 @@ int main(int argc, const char *argv[]) {
                 // on auth success message from
                 LOG("Adding %s to list of fds needed auth response\n", desc_meta(&metas[i]));
                 authing_fds[num_authing_fds++] = metas[i].fd;
-                FD_SET(metas[i].fd, &read_set);
+                epoll_tmp_ev.events = EPOLLIN;
+                epoll_tmp_ev.data.fd = metas[i].fd;
+                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             } else if (metas[i].state == csm_st_told_connect_target) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // a connect-to-target success message from
                 LOG("Adding %s to list of fds needed connect-to-target response\n", desc_meta(&metas[i]));
                 connecting_fds[num_connecting_fds++] = metas[i].fd;
-                FD_SET(metas[i].fd, &read_set);
+                epoll_tmp_ev.events = EPOLLIN;
+                epoll_tmp_ev.data.fd = metas[i].fd;
+                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             } else if (metas[i].state == csm_st_setting_bw) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // for a success msg about setting bw
                 LOG("Adding %s to list of fds needed did-set-bw response\n", desc_meta(&metas[i]));
                 setting_bw_fds[num_setting_bw_fds++] = metas[i].fd;
-                FD_SET(metas[i].fd, &read_set);
+                epoll_tmp_ev.events = EPOLLIN;
+                epoll_tmp_ev.data.fd = metas[i].fd;
+                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             } else if (metas[i].state == csm_st_measuring) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // for a per-second measurement result from
                 LOG("Adding %s to list of ongoing measurement fds\n", desc_meta(&metas[i]));
                 measuring_fds[num_measuring_fds++] = metas[i].fd;
-                FD_SET(metas[i].fd, &read_set);
+                epoll_tmp_ev.events = EPOLLIN;
+                epoll_tmp_ev.data.fd = metas[i].fd;
+                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             }
         }
         assert(num_authing_fds >= 0);
@@ -434,108 +456,63 @@ int main(int argc, const char *argv[]) {
         assert(num_measuring_fds >= 0);
         int num_interesting_fds = num_authing_fds + num_connecting_fds + num_setting_bw_fds + num_measuring_fds;
         if (!num_interesting_fds) {
-            LOG("%d interesting fds. skipping select()\n", num_interesting_fds);
+            LOG("%d interesting fds. skipping epoll_wait()\n", num_interesting_fds);
             continue;
         }
-        LOG("Going in to select() with %d interesting fds\n", num_interesting_fds);
-        // how long we are willing to wait on select()
-        struct timeval select_timeout = { .tv_sec = SELECT_TIMEOUT, .tv_usec = 0 };
-        struct timeval select_timeout_remaining = select_timeout;
-        // for select()
-        int max_fd = max_or(
-            measuring_fds, num_measuring_fds, max_or(
-                setting_bw_fds, num_setting_bw_fds, max_or(
-                    connecting_fds, num_connecting_fds, max_or(
-                        authing_fds, num_authing_fds, 0))));
-        int select_result = select(max_fd+1, &read_set, NULL, NULL, &select_timeout_remaining);
-        if (select_result < 0) {
-            perror("Error on select()");
+        LOG("Going in to epoll_wait() with %d interesting fds\n", num_interesting_fds);
+        int epoll_result = epoll_wait(epoll_fd, epoll_out_events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
+        if (epoll_result < 0) {
+            perror("Error on epoll_wait()");
             loops_without_progress++;
             continue;
-        } else if (select_result == 0) {
-            LOG(TS_FMT " sec timeout on select().\n", select_timeout.tv_sec, select_timeout.tv_usec);
+        } else if (epoll_result == 0) {
+            LOG("%u sec timeout on epoll_wait().\n", EPOLL_TIMEOUT);
             loops_without_progress++;
             continue;
         } else {
             loops_without_progress = 0;
         }
         struct ctrl_sock_meta *meta;
-        // Check for authed sockets
-        for (int i = 0; i < num_authing_fds; i++) {
-            if (FD_ISSET(authing_fds[i], &read_set)) {
-                if (!(meta = meta_with_fd(authing_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", authing_fds[i]);
-                    return -1;
-                }
+        for (int i = 0; i < epoll_result; i++) {
+            if (!(meta = meta_with_fd(epoll_out_events[i].data.fd, metas, num_tor_clients))) {
+                LOG("Could not find fd=%d in metas\n", epoll_out_events[i].data.fd);
+                return -1;
+            }
+            // Check for authed sockets
+            if (array_contains(authing_fds, num_authing_fds, meta->fd)) {
                 if (!tc_authed_socket(meta)) {
-                    LOG("Unable to auth to fd=%d\n", authing_fds[i]);
+                    LOG("Unable to auth to fd=%d\n", meta->fd);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     count_failure++;
-                    // jump to the end of the main loop. Yes, select() will have
-                    // to tell us again about and fds we didn't get around to
-                    // handling this time (in connecting_fds, setting_bw_fds, or
-                    // any other array). But we just marked a bunch of metas as
-                    // finished, which inclides closing fds, which means those
-                    // arrays of fds may have stale fds in them.
                     goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_authed);
             }
-        }
-        // Check for connected-to-target sockets
-        for (int i = 0; i < num_connecting_fds; i++) {
-            if (FD_ISSET(connecting_fds[i], &read_set)) {
-                if (!(meta = meta_with_fd(connecting_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", connecting_fds[i]);
-                    return -1;
-                }
+            // Check for connected-to-target sockets
+            else if (array_contains(connecting_fds, num_connecting_fds, meta->fd)) {
                 if (!tc_connected_socket(meta)) {
-                    LOG("fd=%d was unable to connect to target\n", connecting_fds[i]);
+                    LOG("fd=%d was unable to connect to target\n", meta->fd);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     count_failure++;
-                    // jump to the end of the main loop. Yes, select() will have
-                    // to tell us again about and fds we didn't get around to
-                    // handling this time (in connecting_fds, setting_bw_fds, or
-                    // any other array). But we just marked a bunch of metas as
-                    // finished, which inclides closing fds, which means those
-                    // arrays of fds may have stale fds in them.
                     goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_connected_target);
             }
-        }
-        // Check for did-set-bw sockets
-        for (int i = 0; i < num_setting_bw_fds; i++) {
-            if (FD_ISSET(setting_bw_fds[i], &read_set)) {
-                if (!(meta = meta_with_fd(setting_bw_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", setting_bw_fds[i]);
-                    return -1;
-                }
+            // Check for did-set-bw sockets
+            else if (array_contains(setting_bw_fds, num_setting_bw_fds, meta->fd)) {
                 if (!tc_did_set_bw_rate(meta)) {
-                    LOG("fd=%d was unable to set its bw\n", setting_bw_fds[i]);
+                    LOG("fd=%d was unable to set its bw\n", meta->fd);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     count_failure++;
-                    // jump to the end of the main loop. Yes, select() will have
-                    // to tell us again about and fds we didn't get around to
-                    // handling this time (in connecting_fds, setting_bw_fds, or
-                    // any other array). But we just marked a bunch of metas as
-                    // finished, which inclides closing fds, which means those
-                    // arrays of fds may have stale fds in them.
                     goto main_loop_end;
                 }
                 tc_assert_state(meta, csm_st_bw_set);
             }
-        }
-        // Check for socks with results
-        for (int i = 0; i < num_measuring_fds; i++) {
-            if (FD_ISSET(measuring_fds[i], &read_set)) {
-                if (!(meta = meta_with_fd(measuring_fds[i], metas, num_tor_clients))) {
-                    LOG("Could not find fd=%d in metas\n", measuring_fds[i]);
-                    return -1;
-                }
+            // Check for socks with results
+            else if (array_contains(measuring_fds, num_measuring_fds, meta->fd)) {
                 struct msm_params p;
                 assert(fill_msm_params(&p, meta->current_m_id));
                 if (!tc_output_result(meta, p.id, p.fp)) {
@@ -543,14 +520,10 @@ int main(int argc, const char *argv[]) {
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
                     count_failure++;
-                    // jump to the end of the main loop. Yes, select() will have
-                    // to tell us again about and fds we didn't get around to
-                    // handling this time (in connecting_fds, setting_bw_fds, or
-                    // any other array). But we just marked a bunch of metas as
-                    // finished, which inclides closing fds, which means those
-                    // arrays of fds may have stale fds in them.
                     goto main_loop_end;
                 }
+            } else {
+                LOG("fd=%d was not in any of our sets. WTF is it doing? This is bad ...", meta->fd);
             }
         }
 main_loop_end:
