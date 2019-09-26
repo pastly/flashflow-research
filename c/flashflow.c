@@ -11,7 +11,7 @@
 #include "sched.h"
 
 #define MAX_LOOPS_WITHOUT_PROGRESS 10
-#define EPOLL_TIMEOUT 3
+#define EPOLL_TIMEOUT 3*1000
 #define EPOLL_MAX_EVENTS MAX_NUM_CTRL_SOCKS
 #define measurement_failed(m_id, m_ids, num_m, metas, num_metas) \
     measurement_failed_((m_id), (m_ids), (num_m), (metas), (num_metas), __func__, __FILE__, __LINE__)
@@ -466,7 +466,7 @@ int main(int argc, const char *argv[]) {
             loops_without_progress++;
             continue;
         } else if (epoll_result == 0) {
-            LOG("%u sec timeout on epoll_wait().\n", EPOLL_TIMEOUT);
+            LOG("%u ms timeout on epoll_wait().\n", EPOLL_TIMEOUT);
             loops_without_progress++;
             continue;
         } else {
