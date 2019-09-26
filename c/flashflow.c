@@ -355,19 +355,31 @@ int main(int argc, const char *argv[]) {
                 unsigned next_bw = 0;
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {
-                        if (!tc_set_bw_rate(&metas[j], p.m_bw[next_bw++])) {
-                            LOG("Unable to tell %s to set its bw rate\n", desc_meta(&metas[j]));
-                            num_known_m_ids = measurement_failed(
-                                known_m_ids[i], known_m_ids, num_known_m_ids,
-                                metas, num_tor_clients);
-                            count_failure++;
-                            // jump to the end of the main loop. We just moved
-                            // the contents of known_m_ids around and may screw
-                            // ourselves up if we were to continue looping here.
-                            goto main_loop_end;
+                        // this tor client J is for the current measurement I.
+                        // Loop over the msm params and see if the K'th one is
+                        // unassigned (hasn't been told its bw yet)
+                        for (int k = 0; k < p.num_m; k++) {
+                            if (!strcmp(p.m[k], metas[j].class) && !p.m_assigned[k]) {
+                                if (!tc_set_bw_rate(&metas[j], p.m_bw[next_bw++])) {
+                                    LOG("Unable to tell %s to set its bw rate\n", desc_meta(&metas[j]));
+                                    num_known_m_ids = measurement_failed(
+                                        known_m_ids[i], known_m_ids, num_known_m_ids,
+                                        metas, num_tor_clients);
+                                    count_failure++;
+                                    // jump to the end of the main loop. We just moved
+                                    // the contents of known_m_ids around and may screw
+                                    // ourselves up if we were to continue looping here.
+                                    goto main_loop_end;
+                                }
+                                tc_assert_state(&metas[j], csm_st_setting_bw);
+                                p.m_assigned[k] = 1;
+                                break;
+                            }
                         }
-                        tc_assert_state(&metas[j], csm_st_setting_bw);
                     }
+                }
+                for (int j = 0; j < p.num_m; j++) {
+                    assert(p.m_assigned[j]);
                 }
                 assert(next_bw == p.num_m);
             }
