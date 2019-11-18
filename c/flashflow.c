@@ -230,15 +230,16 @@ array_contains(int *arr, size_t arr_len, int val) {
 
 int main(int argc, const char *argv[]) {
     int count_success = 0, count_failure = 0, count_total = 0;
-    struct ctrl_sock_meta metas[MAX_NUM_CTRL_SOCKS];
-    unsigned known_m_ids[MAX_NUM_CTRL_SOCKS];
+    struct ctrl_sock_meta *metas = calloc(MAX_NUM_CTRL_SOCKS, sizeof(struct ctrl_sock_meta));
+    unsigned *known_m_ids = calloc(MAX_NUM_CTRL_SOCKS, sizeof(unsigned));
     int num_known_m_ids = 0;
     int epoll_fd = epoll_create1(0);
-    struct epoll_event epoll_ev, epoll_tmp_ev, epoll_out_events[EPOLL_MAX_EVENTS];
-    int authing_fds[MAX_NUM_CTRL_SOCKS];
-    int connecting_fds[MAX_NUM_CTRL_SOCKS];
-    int setting_bw_fds[MAX_NUM_CTRL_SOCKS];
-    int measuring_fds[MAX_NUM_CTRL_SOCKS];
+    struct epoll_event epoll_ev, epoll_tmp_ev;
+    struct epoll_event *epoll_out_events = calloc(MAX_NUM_CTRL_SOCKS, sizeof(struct epoll_event));
+    int *authing_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
+    int *connecting_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
+    int *setting_bw_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
+    int *measuring_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
     unsigned loops_without_progress = 0;
     if (argc != 3) {
         //LOG("argc=%d\n", argc);
