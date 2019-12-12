@@ -8,6 +8,7 @@
 
 #include "common.h"
 #include "torclient.h"
+#include "rotatefd.h"
 #include "sched.h"
 
 #define MAX_LOOPS_WITHOUT_PROGRESS 10
@@ -19,10 +20,11 @@
 void
 usage() {
     const char *s = \
-    "arguments: <fingerprint_file> <client_file>\n"
+    "arguments: <fingerprint_file> <client_file> <msm_out_file>\n"
     "\n"
     "fingerprint_file    place from which to read fingerprints to measure, one per line\n"
-    "client_file         place from which to read tor client info, one per line, 'class host port ctrl_port_pw'\n";
+    "client_file         place from which to read tor client info, one per line, 'class host port ctrl_port_pw'\n"
+    "msm_out_file        place to which to write measurement results. Must be a real file\n";
     LOG("%s", s);
 }
 
@@ -241,13 +243,14 @@ int main(int argc, const char *argv[]) {
     int *setting_bw_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
     int *measuring_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
     unsigned loops_without_progress = 0;
-    if (argc != 3) {
+    if (argc != 4) {
         //LOG("argc=%d\n", argc);
         usage();
         return -1;
     }
     const char *fp_fname = argv[1];
     const char *client_fname = argv[2];
+    const char *msm_out_fname = argv[3];
     // number of tor clients read from file
     int num_tor_clients;
     LOG("Reading clients from %s\n", client_fname);
@@ -264,6 +267,8 @@ int main(int argc, const char *argv[]) {
         LOG("Empty sched from %s or error\n", fp_fname);
         return -1;
     }
+    struct rotate_fd *out_rfd = rfd_open(msm_out_fname);
+    LOG("Will output results to %s\n", out_rfd->fname);
     // Main loop
     while (!sched_finished()) {
         // Check if we've looped too many times without doing anything, and fail
@@ -526,7 +531,7 @@ int main(int argc, const char *argv[]) {
             else if (array_contains(measuring_fds, num_measuring_fds, meta->fd)) {
                 struct msm_params p;
                 assert(fill_msm_params(&p, meta->current_m_id));
-                if (!tc_output_result(meta, p.id, p.fp)) {
+                if (!tc_output_result(meta, p.id, p.fp, out_rfd->fd)) {
                     LOG("Error while outputting some results of measurement id=%u\n", meta->current_m_id);
                     num_known_m_ids = measurement_failed(
                         meta->current_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
@@ -540,6 +545,7 @@ int main(int argc, const char *argv[]) {
 main_loop_end:
         (void)0; // purposeful no-op
     }
+    rfd_close(out_rfd);
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     LOG("%d success, %d failed, %d total\n", count_success, count_failure, count_total);
     return 0;

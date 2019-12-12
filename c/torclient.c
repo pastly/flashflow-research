@@ -379,7 +379,7 @@ tc_start_measurement(struct ctrl_sock_meta *meta, const unsigned dur) {
 }
 
 int
-tc_output_result(struct ctrl_sock_meta *meta, unsigned m_id, const char *fp) {
+tc_output_result(struct ctrl_sock_meta *meta, unsigned m_id, const char *fp, FILE *out_fd) {
     char buf[READ_BUF_LEN];
     int len;
     struct timeval t;
@@ -405,7 +405,8 @@ tc_output_result(struct ctrl_sock_meta *meta, unsigned m_id, const char *fp) {
     while ((token = strsep(&head, "\r\n"))) {
         if (!strlen(token))
             continue;
-        printf(
+        fprintf(
+            out_fd,
             TS_FMT " %u %s %s;%s:%s %s\n",
             t.tv_sec, t.tv_usec,
             m_id, fp,

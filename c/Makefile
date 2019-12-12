@@ -22,7 +22,7 @@ else
 all: libflashflow.so flashflow
 endif
 
-OBJ := flashflow.o torclient.o common.o
+OBJ := flashflow.o torclient.o rotatefd.o common.o
 
 flashflow: sched.h $(OBJ) $(RS_LIB)
 	$(CC) -o $@ $(CFLAGS) $(OBJ) $(RS_LIB) $(LDFLAGS) -lm

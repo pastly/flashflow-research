@@ -10,7 +10,7 @@ int tc_connected_socket(struct ctrl_sock_meta *meta);
 int tc_set_bw_rate(struct ctrl_sock_meta *meta, const unsigned bw);
 int tc_did_set_bw_rate(struct ctrl_sock_meta *meta);
 int tc_start_measurement(struct ctrl_sock_meta *meta, const unsigned dur);
-int tc_output_result(struct ctrl_sock_meta *meta, const unsigned m_id, const char *fp);
+int tc_output_result(struct ctrl_sock_meta *meta, const unsigned m_id, const char *fp, FILE *out_fd);
 int tc_next_available(const int num_metas, struct ctrl_sock_meta metas[], const char *class);
 int tc_finished_with_meta(struct ctrl_sock_meta *meta);
 void tc_mark_failed(struct ctrl_sock_meta *meta);
