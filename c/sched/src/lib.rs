@@ -238,7 +238,11 @@ fn sched_new_from_json(fname: &str) {
                     conns.push(conn);
                 }
             }
-            assert_eq!(conns.iter().sum::<u32>(), if has_bg { 161 } else { 160 });
+            if has_bg {
+                assert!(conns.iter().sum::<u32>() >= 161);
+            } else {
+                assert!(conns.iter().sum::<u32>() >= 160);
+            }
             let s = format!(
                 "{m_id} {fp} {dur} {cls} {bw} {conn} {dep}",
                 m_id = next_msm_id,
