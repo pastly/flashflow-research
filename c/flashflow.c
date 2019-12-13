@@ -10,6 +10,7 @@
 #include "torclient.h"
 #include "rotatefd.h"
 #include "sched.h"
+#include "v3bw.h"
 
 #define MAX_LOOPS_WITHOUT_PROGRESS 10
 #define EPOLL_TIMEOUT 3*1000
@@ -20,11 +21,12 @@
 void
 usage() {
     const char *s = \
-    "arguments: <fingerprint_file> <client_file> <msm_out_file>\n"
+    "arguments: <fingerprint_file> <client_file> <msm_out_file> <v3bw_out_file>\n"
     "\n"
     "fingerprint_file    place from which to read fingerprints to measure, one per line\n"
     "client_file         place from which to read tor client info, one per line, 'class host port ctrl_port_pw'\n"
-    "msm_out_file        place to which to write measurement results. Must be a real file\n";
+    "msm_out_file        place to which to write measurement results.\n"
+    "v3bw_out_fname      place to which to write v3bw file.\n";
     LOG("%s", s);
 }
 
@@ -243,7 +245,7 @@ int main(int argc, const char *argv[]) {
     int *setting_bw_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
     int *measuring_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
     unsigned loops_without_progress = 0;
-    if (argc != 4) {
+    if (argc != 5) {
         //LOG("argc=%d\n", argc);
         usage();
         return -1;
@@ -251,6 +253,7 @@ int main(int argc, const char *argv[]) {
     const char *fp_fname = argv[1];
     const char *client_fname = argv[2];
     const char *msm_out_fname = argv[3];
+    const char *v3bw_out_fname = argv[4];
     // number of tor clients read from file
     int num_tor_clients;
     LOG("Reading clients from %s\n", client_fname);
@@ -546,6 +549,7 @@ main_loop_end:
         (void)0; // purposeful no-op
     }
     rfd_close(out_rfd);
+    v3bw_generate(msm_out_fname, v3bw_out_fname);
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     LOG("%d success, %d failed, %d total\n", count_success, count_failure, count_total);
     free(metas);

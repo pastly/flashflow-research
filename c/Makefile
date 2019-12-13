@@ -6,12 +6,14 @@ CC := gcc
 
 
 CFLAGS := $(CFLAGS) -Wall -pipe -ggdb -O0 -DPIC -fPIC -std=gnu99 \
+	$(shell pkg-config --cflags glib-2.0) \
 	-U_FORTIFY_SOURCE -fno-inline -fno-strict-aliasing \
 	-fno-omit-frame-pointer
 # CFLAGS commented out because macOS (clang) warns that they are unused/unknown
 # -Wl,--no-as-needed -rdynamic
 
-LDFLAGS := -lpthread -ldl
+LDFLAGS := -lpthread -ldl \
+	$(shell pkg-config --libs glib-2.0) \
 
 RS_SRC := sched/src/*.rs
 RS_LIB := sched/target/debug/libsched.a
@@ -22,7 +24,7 @@ else
 all: libflashflow.so flashflow
 endif
 
-OBJ := flashflow.o torclient.o rotatefd.o common.o
+OBJ := flashflow.o torclient.o rotatefd.o v3bw.o common.o
 
 flashflow: sched.h $(OBJ) $(RS_LIB)
 	$(CC) -o $@ $(CFLAGS) $(OBJ) $(RS_LIB) $(LDFLAGS) -lm
