@@ -559,5 +559,6 @@ main_loop_end:
     free(connecting_fds);
     free(setting_bw_fds);
     free(measuring_fds);
+    close(epoll_fd);
     return 0;
 }
