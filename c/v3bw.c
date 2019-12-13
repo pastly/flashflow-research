@@ -232,6 +232,7 @@ v3bw_generate(const char *in_fname, const char *out_fname) {
         fclose(in_fd);
         return -2;
     }
+    LOG("Reading msm data from %s and writing v3bw to %s\n", in_fname, out_rfd->fname);
     int ret = _v3bw_generate(in_fd, out_rfd->fd);
     fclose(in_fd);
     rfd_close(out_rfd);
