@@ -548,5 +548,12 @@ main_loop_end:
     rfd_close(out_rfd);
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
     LOG("%d success, %d failed, %d total\n", count_success, count_failure, count_total);
+    free(metas);
+    free(known_m_ids);
+    free(epoll_out_events);
+    free(authing_fds);
+    free(connecting_fds);
+    free(setting_bw_fds);
+    free(measuring_fds);
     return 0;
 }
