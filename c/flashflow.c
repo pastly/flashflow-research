@@ -232,7 +232,8 @@ array_contains(int *arr, size_t arr_len, int val) {
     return 0;
 }
 
-int main(int argc, const char *argv[]) {
+int
+main_loop_once(int argc, const char *argv[]) {
     int count_success = 0, count_failure = 0, count_total = 0;
     struct ctrl_sock_meta *metas = calloc(MAX_NUM_CTRL_SOCKS, sizeof(struct ctrl_sock_meta));
     unsigned *known_m_ids = calloc(MAX_NUM_CTRL_SOCKS, sizeof(unsigned));
@@ -561,4 +562,13 @@ main_loop_end:
     free(measuring_fds);
     close(epoll_fd);
     return 0;
+}
+
+int
+main(int argc, const char *argv[]) {
+    int ret;
+    while (1) {
+        ret = main_loop_once(argc, argv);
+        if (ret) return ret;
+    }
 }
