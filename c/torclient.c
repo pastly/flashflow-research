@@ -190,6 +190,7 @@ tc_client_file_read(const char *fname, struct ctrl_sock_meta metas[]) {
         count++;
     }
     free(line);
+    fclose(fd);
     return count;
 }
 
