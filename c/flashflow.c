@@ -5,6 +5,7 @@
 #include <limits.h>
 #include <assert.h>
 #include <sys/epoll.h>
+#include <errno.h>
 
 #include "common.h"
 #include "torclient.h"
@@ -230,6 +231,13 @@ array_contains(int *arr, size_t arr_len, int val) {
         }
     }
     return 0;
+}
+
+void
+epoll_delete_all(int epfd, int *arr, size_t arr_len) {
+    for (int i = 0; i < arr_len; i++)
+        if (epoll_ctl(epfd, EPOLL_CTL_DEL, arr[i], NULL))
+            LOG("Error telling epoll to delete %d: %s\n", arr[i], strerror(errno));
 }
 
 int
@@ -543,12 +551,18 @@ main_loop_once(int argc, const char *argv[]) {
                     goto main_loop_end;
                 }
             } else {
-                LOG("fd=%d was not in any of our sets. WTF is it doing? This is bad ...", meta->fd);
+                LOG("fd=%d was not in any of our sets. WTF is it doing? This is bad ...\n", meta->fd);
             }
         }
+        // Tell epoll we don't care about any sockets
+        epoll_delete_all(epoll_fd, authing_fds, num_authing_fds);
+        epoll_delete_all(epoll_fd, connecting_fds, num_connecting_fds);
+        epoll_delete_all(epoll_fd, setting_bw_fds, num_setting_bw_fds);
+        epoll_delete_all(epoll_fd, measuring_fds, num_measuring_fds);
 main_loop_end:
         (void)0; // purposeful no-op
     }
+    /// XXX TODO XXX close all torclient sockets
     rfd_close(out_rfd);
     v3bw_generate(msm_out_fname, v3bw_out_fname);
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
