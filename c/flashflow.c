@@ -563,7 +563,6 @@ main_loop_once(int argc, const char *argv[]) {
 main_loop_end:
         (void)0; // purposeful no-op
     }
-    /// XXX TODO XXX close all torclient sockets
     rfd_close(out_rfd);
     v3bw_generate(msm_out_fname, v3bw_out_fname);
     LOG("ALLLLLLLL DOOOONNEEEEE\n");
