@@ -234,6 +234,18 @@ array_contains(int *arr, size_t arr_len, int val) {
 }
 
 void
+epoll_add_all(int epfd, int *arr, size_t arr_len) {
+    struct epoll_event epoll_tmp_ev;
+    epoll_tmp_ev.events = EPOLLIN;
+    for (int i = 0; i < arr_len; i++) {
+        epoll_tmp_ev.data.fd = arr[i];
+        if (epoll_ctl(epfd, EPOLL_CTL_ADD, arr[i], &epoll_tmp_ev)) {
+            LOG("Error teslling epoll to add %d: %s\n", arr[i], strerror(errno));
+        }
+    }
+}
+
+void
 epoll_delete_all(int epfd, int *arr, size_t arr_len) {
     for (int i = 0; i < arr_len; i++)
         if (epoll_ctl(epfd, EPOLL_CTL_DEL, arr[i], NULL))
@@ -247,7 +259,6 @@ main_loop_once(int argc, const char *argv[]) {
     unsigned *known_m_ids = calloc(MAX_NUM_CTRL_SOCKS, sizeof(unsigned));
     int num_known_m_ids = 0;
     int epoll_fd = epoll_create1(0);
-    struct epoll_event epoll_ev, epoll_tmp_ev;
     struct epoll_event *epoll_out_events = calloc(MAX_NUM_CTRL_SOCKS, sizeof(struct epoll_event));
     int *authing_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
     int *connecting_fds = calloc(MAX_NUM_CTRL_SOCKS, sizeof(int));
@@ -437,8 +448,6 @@ main_loop_once(int argc, const char *argv[]) {
             }
             free_msm_params(&p);
         }
-        memset(&epoll_ev, 0, sizeof(struct epoll_event));
-        epoll_ev.events = EPOLLIN;
         int num_authing_fds = 0;
         int num_connecting_fds = 0;
         int num_setting_bw_fds = 0;
@@ -449,35 +458,27 @@ main_loop_once(int argc, const char *argv[]) {
                 // on auth success message from
                 LOG("Adding %s to list of fds needed auth response\n", desc_meta(&metas[i]));
                 authing_fds[num_authing_fds++] = metas[i].fd;
-                epoll_tmp_ev.events = EPOLLIN;
-                epoll_tmp_ev.data.fd = metas[i].fd;
-                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             } else if (metas[i].state == csm_st_told_connect_target) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // a connect-to-target success message from
                 LOG("Adding %s to list of fds needed connect-to-target response\n", desc_meta(&metas[i]));
                 connecting_fds[num_connecting_fds++] = metas[i].fd;
-                epoll_tmp_ev.events = EPOLLIN;
-                epoll_tmp_ev.data.fd = metas[i].fd;
-                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             } else if (metas[i].state == csm_st_setting_bw) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // for a success msg about setting bw
                 LOG("Adding %s to list of fds needed did-set-bw response\n", desc_meta(&metas[i]));
                 setting_bw_fds[num_setting_bw_fds++] = metas[i].fd;
-                epoll_tmp_ev.events = EPOLLIN;
-                epoll_tmp_ev.data.fd = metas[i].fd;
-                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             } else if (metas[i].state == csm_st_measuring) {
                 // Build up the list of tor client fds that we are currently waiting on
                 // for a per-second measurement result from
                 LOG("Adding %s to list of ongoing measurement fds\n", desc_meta(&metas[i]));
                 measuring_fds[num_measuring_fds++] = metas[i].fd;
-                epoll_tmp_ev.events = EPOLLIN;
-                epoll_tmp_ev.data.fd = metas[i].fd;
-                epoll_ctl(epoll_fd, EPOLL_CTL_ADD, metas[i].fd, &epoll_tmp_ev);
             }
         }
+        epoll_add_all(epoll_fd, authing_fds, num_authing_fds);
+        epoll_add_all(epoll_fd, connecting_fds, num_connecting_fds);
+        epoll_add_all(epoll_fd, setting_bw_fds, num_setting_bw_fds);
+        epoll_add_all(epoll_fd, measuring_fds, num_measuring_fds);
         assert(num_authing_fds >= 0);
         assert(num_connecting_fds >= 0);
         assert(num_setting_bw_fds >= 0);
