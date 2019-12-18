@@ -61,10 +61,14 @@ static void
 msm_info_add(struct msm_info *msm, long ts, long bw) {
     assert(msm);
     if (ts < msm->first) {
-        LOG("Got ts %ld which is less than first %ld. Fuck. Bailing out "
-                "because I'm hoping this doesn't happen to make "
-                "implementation easier.\n", ts, msm->first);
-        abort();
+        // we could try harder if we really wanted. But let's not do so until
+        // it becomes a problem.
+        LOG("Got ts %ld which is less than first %ld. This is not expected "
+                "to happen often and when it does happen it's expected to be "
+                "less than first by just a few second, which would have "
+                "minimal effect. Ignoring this result and hoping for "
+                "the best.\n", ts, msm->first);
+        return;
         // got a new first. Ffffuuuu
         if (ts < msm->first - NUM_MSMS_IN_MSM_INFO) {
             // it's so much smaller that we need to throw away all existing data
@@ -73,6 +77,12 @@ msm_info_add(struct msm_info *msm, long ts, long bw) {
         }
     } else {
         // new ts after our first one. make sure it fits in our list of msms
+        if (ts >= msm->first + NUM_MSMS_IN_MSM_INFO) {
+            LOG("Got ts %ld which is %ld more than the first %ld and only %d "
+                    "is allowed. Ignoring this result.\n",
+                    ts, ts - msm->first, msm->first, NUM_MSMS_IN_MSM_INFO);
+            return;
+        }
         assert(ts < msm->first + NUM_MSMS_IN_MSM_INFO);
         // ts is equal or larger than msm->first, so non-negative
         // ts is no more than NUM_MSMS_IN_MSM_INFO, so fits in size_t even if
@@ -123,6 +133,20 @@ trim_newlines(char *line) {
     }
 }
 
+/** Give array of pointers. A NULL must be right after the last valid pointer
+ * in the array. Returns the number of valid pointers in the array. If first
+ * element is NULL, returns 0. If first element is a pointer and second is
+ * NULL, returns 1. Etc.
+ */
+static size_t
+array_len(void **arr) {
+    size_t count = 0;
+    while (arr[count]) {
+        count++;
+    };
+    return count;
+}
+
 static GHashTable *
 read_input_to_ht(FILE *in) {
     char *line = NULL;
@@ -147,6 +171,21 @@ read_input_to_ht(FILE *in) {
         }
         trim_newlines(line);
         gchar **words = g_strsplit(line, " ", 9);
+        if (array_len((void **)words) != 9) {
+            LOG("Expect 9 words on valid msm line. Ignoring line '%s'\n", line);
+            g_strfreev(words);
+            continue;
+        }
+        if (strncmp(words[4], "650", 3) != 0) {
+            LOG("Expected '650' but got '%s'. Ignoring line '%s'\n", words[4], line);
+            g_strfreev(words);
+            continue;
+        }
+        if (strncmp(words[5], "SPEEDTESTING", 12) != 0) {
+            LOG("Expected 'SPEEDTESTING' but got '%s'. Ignoring line '%s'\n", words[5], line);
+            g_strfreev(words);
+            continue;
+        }
         char *fp = NULL;;
         long ts;
         long bwdown;
