@@ -294,6 +294,10 @@ main_loop_once(int argc, const char *argv[]) {
     LOG("Will output results to %s\n", out_rfd->fname);
     // Main loop
     while (!sched_finished()) {
+        int num_authing_fds = 0;
+        int num_connecting_fds = 0;
+        int num_setting_bw_fds = 0;
+        int num_measuring_fds = 0;
         // Check if we've looped too many times without doing anything, and fail
         // all existing measurements if so
         if (loops_without_progress > MAX_LOOPS_WITHOUT_PROGRESS) {
@@ -448,10 +452,6 @@ main_loop_once(int argc, const char *argv[]) {
             }
             free_msm_params(&p);
         }
-        int num_authing_fds = 0;
-        int num_connecting_fds = 0;
-        int num_setting_bw_fds = 0;
-        int num_measuring_fds = 0;
         for (int i = 0; i < num_tor_clients; i++) {
             if (metas[i].state == csm_st_authing) {
                 // Build up the list of tor client fds that we are currently waiting
@@ -486,18 +486,18 @@ main_loop_once(int argc, const char *argv[]) {
         int num_interesting_fds = num_authing_fds + num_connecting_fds + num_setting_bw_fds + num_measuring_fds;
         if (!num_interesting_fds) {
             LOG("%d interesting fds. skipping epoll_wait()\n", num_interesting_fds);
-            continue;
+            goto main_loop_end;
         }
         LOG("Going in to epoll_wait() with %d interesting fds\n", num_interesting_fds);
         int epoll_result = epoll_wait(epoll_fd, epoll_out_events, EPOLL_MAX_EVENTS, EPOLL_TIMEOUT);
         if (epoll_result < 0) {
             perror("Error on epoll_wait()");
             loops_without_progress++;
-            continue;
+            goto main_loop_end;
         } else if (epoll_result == 0) {
             LOG("%u ms timeout on epoll_wait().\n", EPOLL_TIMEOUT);
             loops_without_progress++;
-            continue;
+            goto main_loop_end;
         } else {
             loops_without_progress = 0;
         }
@@ -555,13 +555,14 @@ main_loop_once(int argc, const char *argv[]) {
                 LOG("fd=%d was not in any of our sets. WTF is it doing? This is bad ...\n", meta->fd);
             }
         }
+main_loop_end:
         // Tell epoll we don't care about any sockets
         epoll_delete_all(epoll_fd, authing_fds, num_authing_fds);
         epoll_delete_all(epoll_fd, connecting_fds, num_connecting_fds);
         epoll_delete_all(epoll_fd, setting_bw_fds, num_setting_bw_fds);
         epoll_delete_all(epoll_fd, measuring_fds, num_measuring_fds);
-main_loop_end:
-        (void)0; // purposeful no-op
+        (void)0; // purposeful no-op, in case refactoring ever removes all
+                 //other statements after main_loop_end label
     }
     rfd_close(out_rfd);
     v3bw_generate(msm_out_fname, v3bw_out_fname);
