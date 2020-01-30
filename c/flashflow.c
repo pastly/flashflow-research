@@ -417,6 +417,7 @@ main_loop_once(int argc, const char *argv[]) {
             // for bw is set -> start measurement
             if (is_totally_bw_set(known_m_ids[i], metas, num_tor_clients)) {
                 LOG("YAY ITS TIME TO START MEAUREMENT %u FINALLY\n", known_m_ids[i]);
+                sched_reset_failsafe_stop(known_m_ids[i]);
                 int num_told = 0;
                 for (int j = 0; j < num_tor_clients; j++) {
                     if (metas[j].current_m_id == known_m_ids[i]) {

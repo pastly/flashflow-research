@@ -48,6 +48,16 @@ pub extern "C" fn sched_get_failsafe_stop(m_id: u32) -> u64 {
     MSMS.lock().unwrap().get(&m_id).unwrap().failsafe_stop
 }
 
+#[no_mangle]
+pub extern "C" fn sched_reset_failsafe_stop(m_id: u32) {
+    let mut msms = MSMS.lock().unwrap();
+    let mut m = msms.get_mut(&m_id).unwrap();
+    m.failsafe_stop = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() + (3 * m.dur / 2) as u64;
+}
+
 //#[repr(C)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Host {
