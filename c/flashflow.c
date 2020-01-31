@@ -326,7 +326,30 @@ main_loop_once(int argc, const char *argv[]) {
             free_msm_params(&p);
         }
         unsigned new_m_id;
-        while ((new_m_id = sched_next())) {
+        if ((new_m_id = sched_next()) > 0) {
+        //while ((new_m_id = sched_next())) {
+            /*
+             * This COULD be a while loop that keeps starting new measurements
+             * while sched_next() returns new msm ids. And it originally was.
+             * The logic is that we might as well get started on as many as
+             * possible as soon as possible.
+             *
+             * The problem lies in the fact that in some of our experiements we
+             * actually run a full, complex schedule that sometimes has TONS of
+             * measurements that should start at the same time ... and deep
+             * inside find_and_connect_metas() down into tc_next_avilable() we
+             * have tc_make_socket() that BLOCKS. A socket might take 100ms to
+             * build, each measurement requires at least 2 sockets (1 bg
+             * client, 1 msm client), and there could be many 10s of msms to
+             * setup. That's ~10s to setup 50 msms. That 10s is a long time to
+             * eat into the first few measurements' failsafe stop time.
+             *
+             * So in closing, we only start one measurement at a time. The next
+             * loop back around we will again check here and start another one.
+             * Thus spreading out those blocking socket creations and allowing
+             * flashflow to work through the handshaking process for earlier
+             * measurements while new ones get started.
+             */
             // We are allowed to start a new measurement. Get the ball rolling
             // on that by finding and connecting to the needed tor clients.
             LOG("Starting new measurement id=%u\n", new_m_id);
@@ -336,12 +359,12 @@ main_loop_once(int argc, const char *argv[]) {
                     new_m_id, known_m_ids, num_known_m_ids,
                     metas, num_tor_clients);
                 count_failure++;
-                continue;
-            }
-            known_m_ids[num_known_m_ids++] = new_m_id;
-            if (!send_auth_metas(new_m_id, metas, num_tor_clients)) {
-                num_known_m_ids = measurement_failed(new_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
-                count_failure++;
+            } else {
+                known_m_ids[num_known_m_ids++] = new_m_id;
+                if (!send_auth_metas(new_m_id, metas, num_tor_clients)) {
+                    num_known_m_ids = measurement_failed(new_m_id, known_m_ids, num_known_m_ids, metas, num_tor_clients);
+                    count_failure++;
+                }
             }
         }
         // for each known measurement, do things for them if any of them need
