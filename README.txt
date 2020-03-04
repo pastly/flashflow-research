@@ -31,7 +31,7 @@ mtraudt/purple-hurtz-code.git from rhea. For example,
 
 git clone git@rhea:mtraudt/purple-hurtz-code.git
 
-Once you have the code, go to the "c" subdirectory and run make.
+Once you have the code, run make.
 
 Compiling the Rust library will require downloading some crates on the
 first compile. If unable to communicate with the Internet well enough to
